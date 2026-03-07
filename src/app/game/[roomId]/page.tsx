@@ -32,6 +32,7 @@ import { GameStatus } from "@/components/GameStatus";
 import { Lobby } from "@/components/Lobby";
 import { WinOverlay } from "@/components/WinOverlay";
 import { Chat } from "@/components/Chat";
+import { VoiceChat } from "@/components/VoiceChat";
 
 const FLIP_STORAGE_KEY = "sequence_board_flipped";
 
@@ -425,6 +426,16 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
       {/* Chat - visible during playing and finished phases */}
       {(state.phase === "playing" || state.phase === "finished") && player && (
         <Chat
+          roomId={roomId}
+          playerId={playerId}
+          playerName={player.name}
+          playerColor={player.color}
+        />
+      )}
+
+      {/* Voice chat - visible during playing and finished phases */}
+      {(state.phase === "playing" || state.phase === "finished") && player && (
+        <VoiceChat
           roomId={roomId}
           playerId={playerId}
           playerName={player.name}
