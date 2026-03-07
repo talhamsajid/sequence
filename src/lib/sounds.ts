@@ -107,7 +107,8 @@ export function winSound(): void {
   playToneAt(392, 400, 0, "sine", 0.1);
 }
 
-/** Tick sound for timer warning — last 10 seconds */
-export function timerWarningSound(): void {
-  playTone(1000, 30, "square", 0.08);
+/** Tick-tock clock sound for timer countdown — alternates pitch */
+export function timerTickSound(isEven: boolean): void {
+  // Tick = higher pitch, tock = lower pitch (like a clock)
+  playTone(isEven ? 1200 : 800, 40, "sine", 0.1);
 }

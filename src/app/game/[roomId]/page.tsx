@@ -24,6 +24,7 @@ import {
   removeChipSound,
   sequenceSound,
   winSound,
+  timerTickSound,
   isSoundEnabled,
   setSoundEnabled,
 } from "@/lib/sounds";
@@ -164,6 +165,22 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
       clearInterval(interval);
     };
   }, [isMyTurn, turnStartedAt, turnTimeLimit, playerId, roomId]);
+
+  // Tick-tock countdown sound when <=15 seconds remain (current player's turn only)
+  useEffect(() => {
+    if (!isMyTurn || turnStartedAt === null || state?.phase !== "playing") return;
+
+    const interval = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - turnStartedAt) / 1000);
+      const remaining = turnTimeLimit - elapsed;
+
+      if (remaining > 0 && remaining <= 15) {
+        timerTickSound(remaining % 2 === 0);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isMyTurn, turnStartedAt, turnTimeLimit, state?.phase]);
 
   // Handle cell click
   const handleCellClick = useCallback(
