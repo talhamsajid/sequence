@@ -76,27 +76,26 @@ export function GameStatus({
     ? getPlayerTeam(state.teams, currentPlayerId)
     : null;
 
-  // Timer ring colors
-  const timerColor = remaining <= 10
+  // Timer
+  const timerStroke = remaining <= 10
     ? "stroke-red-500"
     : remaining <= 30
     ? "stroke-yellow-500"
-    : "stroke-emerald-500";
-  const timerTextColor = remaining <= 10
-    ? "text-red-500"
+    : "stroke-emerald-400";
+  const timerText = remaining <= 10
+    ? "text-red-400"
     : remaining <= 30
     ? "text-yellow-400"
-    : "text-white/70";
-  const circumference = 2 * Math.PI * 14;
+    : "text-white";
+  const circumference = 2 * Math.PI * 12;
   const fraction = state.turnTimeLimit > 0 ? remaining / state.turnTimeLimit : 0;
-
   const minutes = Math.floor(remaining / 60);
   const seconds = remaining % 60;
 
   return (
-    <div className="flex items-center gap-1.5 px-1.5 py-1 sm:px-3 sm:py-2 bg-black/30 backdrop-blur-sm rounded-lg">
-      {/* Player indicators — compact pill per player */}
-      <div className="flex items-center gap-1 overflow-x-auto scrollbar-none min-w-0 flex-1">
+    <div className="flex items-center gap-2 px-2 py-1.5 sm:px-3 sm:py-2 bg-gray-900/90 backdrop-blur rounded-xl border border-white/10">
+      {/* Players */}
+      <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none min-w-0 flex-1">
         {isTeams && state.teams ? (
           Object.entries(state.teams).sort(([a], [b]) => a.localeCompare(b)).map(([teamId, team]) => {
             const isCurrentTeam = currentTeamInfo?.teamId === teamId;
@@ -104,13 +103,16 @@ export function GameStatus({
               <div
                 key={teamId}
                 className={cn(
-                  "flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] sm:text-xs font-medium whitespace-nowrap shrink-0",
-                  isCurrentTeam ? "bg-white/20 ring-1 ring-white/30" : "bg-white/5",
+                  "flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap shrink-0",
+                  isCurrentTeam ? "bg-white/15 ring-1 ring-white/30" : "bg-white/5",
                 )}
               >
-                <div className={cn("w-2 h-2 rounded-full shrink-0", colorDot[team.color])} />
-                <span className="text-white/90">
+                <div className={cn("w-2.5 h-2.5 rounded-full shrink-0", colorDot[team.color])} />
+                <span className="text-sm">
                   {team.playerIds.map((pid) => getPlayerAvatar(pid)).join("")}
+                </span>
+                <span className="text-white/70 text-[11px]">
+                  {team.playerIds.includes(playerId) ? "You" : team.name}
                 </span>
               </div>
             );
@@ -124,15 +126,15 @@ export function GameStatus({
               <div
                 key={pid}
                 className={cn(
-                  "flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] sm:text-xs font-medium whitespace-nowrap shrink-0",
-                  isCurrent ? "bg-white/20 ring-1" : "bg-white/5",
+                  "flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap shrink-0",
+                  isCurrent ? "bg-white/15 ring-1.5" : "bg-white/5",
                   isCurrent && colorRing[p.color],
                 )}
               >
-                <span>{getPlayerAvatar(pid)}</span>
-                <div className={cn("w-2 h-2 rounded-full shrink-0", colorDot[p.color])} />
-                <span className="text-white/80 hidden sm:inline">
-                  {pid === playerId ? "You" : p.name}
+                <span className="text-sm">{getPlayerAvatar(pid)}</span>
+                <div className={cn("w-2.5 h-2.5 rounded-full shrink-0", colorDot[p.color])} />
+                <span className="text-white/80 text-[11px]">
+                  {pid === playerId ? "You" : p.name.split(" ")[0]}
                 </span>
               </div>
             );
@@ -140,27 +142,27 @@ export function GameStatus({
         )}
       </div>
 
-      {/* Center: Timer + Turn indicator */}
+      {/* Timer + Turn */}
       <div className="flex items-center gap-1.5 shrink-0">
         {state.phase === "playing" && (
           <div className={cn("flex items-center gap-1", remaining <= 10 && "animate-pulse")}>
-            <svg width="26" height="26" viewBox="0 0 32 32" className="shrink-0">
-              <circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" strokeWidth="3" className="text-white/10" />
+            <svg width="24" height="24" viewBox="0 0 28 28" className="shrink-0">
+              <circle cx="14" cy="14" r="12" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-white/10" />
               <circle
-                cx="16" cy="16" r="14" fill="none" strokeWidth="3" strokeLinecap="round"
-                className={cn(timerColor, "transition-all duration-1000")}
+                cx="14" cy="14" r="12" fill="none" strokeWidth="2.5" strokeLinecap="round"
+                className={cn(timerStroke, "transition-all duration-1000")}
                 strokeDasharray={circumference}
                 strokeDashoffset={circumference * (1 - fraction)}
-                transform="rotate(-90 16 16)"
+                transform="rotate(-90 14 14)"
               />
             </svg>
-            <span className={cn("text-[11px] font-mono font-bold tabular-nums", timerTextColor)}>
+            <span className={cn("text-xs font-mono font-bold tabular-nums", timerText)}>
               {minutes}:{seconds.toString().padStart(2, "0")}
             </span>
           </div>
         )}
 
-        <div className="text-[10px] sm:text-xs font-semibold whitespace-nowrap">
+        <div className="text-[11px] sm:text-xs font-semibold whitespace-nowrap">
           {state.phase === "finished" ? (
             <span className="text-amber-400">
               {state.winnerLabel
@@ -174,35 +176,34 @@ export function GameStatus({
           ) : isMyTurn ? (
             <span className="text-emerald-400 animate-pulse">Your turn</span>
           ) : (
-            <span className="text-white/50">
+            <span className="text-white/60">
               {currentPlayer?.name?.split(" ")[0]}
             </span>
           )}
         </div>
       </div>
 
-      {/* Sequence count badge */}
+      {/* Sequence count */}
       {sequenceCount !== undefined && sequencesNeeded !== undefined && (
-        <div className="flex items-center gap-0.5 px-1.5 py-0.5 bg-white/10 rounded-full shrink-0">
-          <span className="text-[10px] font-bold text-emerald-300">{sequenceCount}</span>
-          <span className="text-[10px] text-white/30">/</span>
-          <span className="text-[10px] text-white/50">{sequencesNeeded}</span>
+        <div className="flex items-center gap-0.5 px-1.5 py-0.5 bg-emerald-500/20 rounded-full shrink-0 border border-emerald-500/30">
+          <span className="text-[11px] font-bold text-emerald-300">{sequenceCount}</span>
+          <span className="text-[11px] text-white/40">/</span>
+          <span className="text-[11px] text-white/60">{sequencesNeeded}</span>
         </div>
       )}
 
       {/* Action buttons */}
       <div className="flex items-center gap-0.5 shrink-0">
-        {/* Flip board */}
         {onToggleFlip && (
           <button
             onClick={onToggleFlip}
-            className="p-1 rounded-full hover:bg-white/10 transition-colors"
+            className="p-1.5 rounded-full hover:bg-white/10 transition-colors"
             title={boardFlipped ? "Reset board" : "Flip board"}
           >
             <svg
-              width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
               strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-              className="text-white/40"
+              className="text-white/50"
               style={{ transform: boardFlipped ? "rotate(180deg)" : "none", transition: "transform 0.3s" }}
             >
               <path d="M21 12a9 9 0 1 1-6.219-8.56" />
@@ -211,17 +212,16 @@ export function GameStatus({
           </button>
         )}
 
-        {/* Sound toggle */}
         {onToggleSound && (
           <button
             onClick={onToggleSound}
-            className="p-1 rounded-full hover:bg-white/10 transition-colors"
+            className="p-1.5 rounded-full hover:bg-white/10 transition-colors"
             title={soundOn ? "Mute" : "Unmute"}
           >
             <svg
-              width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
               strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-              className="text-white/40"
+              className="text-white/50"
             >
               {soundOn ? (
                 <>
@@ -239,17 +239,16 @@ export function GameStatus({
           </button>
         )}
 
-        {/* Leave game */}
         {onLeave && (
           <button
             onClick={onLeave}
-            className="p-1 rounded-full hover:bg-red-500/20 transition-colors"
+            className="p-1.5 rounded-full hover:bg-red-500/20 transition-colors"
             title="Leave game"
           >
             <svg
-              width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
               strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-              className="text-white/40 hover:text-red-400 transition-colors"
+              className="text-white/50 hover:text-red-400 transition-colors"
             >
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
               <polyline points="16 17 21 12 16 7" />

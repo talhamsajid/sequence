@@ -75,7 +75,7 @@ export function GameBoard({
                 key={key}
                 cell={cell}
                 chip={state.chips?.[r]?.[c] ?? null}
-                isHighlighted={false}
+                isHighlighted={isValid}
                 isLastMove={
                   state.lastMove?.row === r && state.lastMove?.col === c
                 }
