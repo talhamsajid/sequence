@@ -113,9 +113,9 @@ export function GameStatus({ state, playerId, soundOn = true, onToggleSound, onL
     : null;
 
   return (
-    <div className="flex items-center justify-between px-4 py-2 bg-white/90 backdrop-blur rounded-lg shadow-sm">
+    <div className="flex items-center justify-between px-2 sm:px-4 py-1.5 sm:py-2 bg-white/90 backdrop-blur rounded-lg shadow-sm gap-2">
       {/* Players / Teams */}
-      <div className="flex gap-3 overflow-x-auto">
+      <div className="flex gap-1.5 sm:gap-3 overflow-x-auto scrollbar-none min-w-0 flex-1">
         {isTeams && state.teams ? (
           // Team mode: show teams
           Object.entries(state.teams).sort(([a], [b]) => a.localeCompare(b)).map(([teamId, team]) => {
@@ -164,7 +164,7 @@ export function GameStatus({ state, playerId, soundOn = true, onToggleSound, onL
       </div>
 
       {/* Turn indicator + Timer */}
-      <div className="flex items-center gap-2 ml-2">
+      <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
         {state.phase === "playing" && (
           <TimerDisplay remaining={remaining} timeLimit={state.turnTimeLimit} />
         )}

@@ -372,7 +372,7 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
   return (
     <div className="min-h-dvh flex flex-col bg-gradient-to-b from-emerald-900 to-emerald-950">
       {/* Status bar */}
-      <div className="p-2 sm:p-3">
+      <div className="px-2 py-1 sm:p-3">
         <GameStatus
           state={state}
           playerId={playerId}
@@ -390,7 +390,7 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
       )}
 
       {/* Board flip toggle */}
-      <div className="flex justify-center mb-1">
+      <div className="flex justify-center">
         <button
           onClick={handleToggleFlip}
           className="flex items-center gap-1 px-2 py-1 text-xs text-emerald-300/70 hover:text-emerald-200 transition-colors rounded"
@@ -418,7 +418,7 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
       </div>
 
       {/* Board */}
-      <div className="flex-1 flex items-center justify-center px-1 sm:px-4">
+      <div className="flex-1 flex items-center justify-center px-0.5 sm:px-4">
         <GameBoard
           state={state}
           selectedCardIndex={selectedCard}
@@ -429,7 +429,7 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
       </div>
 
       {/* Sequence count */}
-      <div className="text-center py-1">
+      <div className="text-center py-0.5">
         <span className="text-xs text-emerald-300/70">
           Sequences: {(() => {
             if (state.mode === "teams" && state.teams) {
