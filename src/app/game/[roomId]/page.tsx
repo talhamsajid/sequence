@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, use } from "react";
+import { useEffect, useState, useCallback, useRef, use } from "react";
 import { useRouter } from "next/navigation";
 import { subscribeToRoom, setRoom } from "@/lib/firebase";
 import {
@@ -11,13 +11,33 @@ import {
   getValidPositions,
   hasPlayableCard,
   replaceDeadCards,
+  getRandomValidMove,
 } from "@/lib/game";
+import { isOneEyedJack } from "@/lib/board";
 import { getPlayerId, getPlayerName } from "@/lib/utils";
+import { getMaxPlayers, getPlayerTeam, countTeamSequences } from "@/lib/teams";
+import {
+  playChipSound,
+  yourTurnSound,
+  removeChipSound,
+  sequenceSound,
+  winSound,
+  isSoundEnabled,
+  setSoundEnabled,
+} from "@/lib/sounds";
 import { GameBoard } from "@/components/GameBoard";
 import { PlayerHand } from "@/components/PlayerHand";
 import { GameStatus } from "@/components/GameStatus";
 import { Lobby } from "@/components/Lobby";
 import { WinOverlay } from "@/components/WinOverlay";
+import { Chat } from "@/components/Chat";
+
+const FLIP_STORAGE_KEY = "sequence_board_flipped";
+
+function getStoredFlip(): boolean {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem(FLIP_STORAGE_KEY) === "true";
+}
 
 export default function GamePage({ params }: { params: Promise<{ roomId: string }> }) {
   const { roomId } = use(params);
@@ -27,6 +47,13 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
   const [playerId] = useState(() => getPlayerId());
   const [error, setError] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
+  const [soundOn, setSoundOn] = useState(() => isSoundEnabled());
+  const [boardFlipped, setBoardFlipped] = useState(() => getStoredFlip());
+
+  // Track previous values for change detection
+  const prevTurnRef = useRef<number | null>(null);
+  const prevSeqCountRef = useRef<number>(0);
+  const prevPhaseRef = useRef<string | null>(null);
 
   // Subscribe to game state
   useEffect(() => {
@@ -36,7 +63,9 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
       // Auto-join if not in game
       if (gameState && !gameState.players[playerId] && gameState.phase === "waiting" && !joining) {
         const name = getPlayerName();
-        if (name && Object.keys(gameState.players).length < 3) {
+        const teamCount = gameState.teams ? Object.keys(gameState.teams).length : 0;
+        const maxPlayers = getMaxPlayers(gameState.mode, teamCount);
+        if (name && Object.keys(gameState.players).length < maxPlayers) {
           setJoining(true);
           try {
             const updated = addPlayer(gameState, playerId, name);
@@ -51,13 +80,95 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
     return unsubscribe;
   }, [roomId, playerId, joining]);
 
+  // Sound effects on state changes
+  useEffect(() => {
+    if (!state || state.phase === "waiting") return;
+
+    // Turn change — play your-turn chime
+    if (
+      prevTurnRef.current !== null &&
+      prevTurnRef.current !== state.currentTurn &&
+      state.playerOrder[state.currentTurn] === playerId &&
+      state.phase === "playing"
+    ) {
+      yourTurnSound();
+    }
+
+    // New sequence detected
+    const currentSeqCount = state.sequences.length;
+    if (prevSeqCountRef.current > 0 && currentSeqCount > prevSeqCountRef.current) {
+      sequenceSound();
+    }
+
+    // Game finished
+    if (prevPhaseRef.current === "playing" && state.phase === "finished") {
+      winSound();
+    }
+
+    prevTurnRef.current = state.currentTurn;
+    prevSeqCountRef.current = state.sequences.length;
+    prevPhaseRef.current = state.phase;
+  }, [state, playerId]);
+
+  // Turn timer: auto-play a random valid move when time expires (only active player's client)
+  const autoPlayingRef = useRef(false);
+  useEffect(() => {
+    if (!state || state.phase !== "playing" || state.turnStartedAt === null) return;
+
+    const currentPlayerId = state.playerOrder[state.currentTurn];
+    const isMyTurn = currentPlayerId === playerId;
+    if (!isMyTurn) return;
+
+    const interval = setInterval(async () => {
+      const elapsed = Math.floor((Date.now() - state.turnStartedAt!) / 1000);
+      const remaining = state.turnTimeLimit - elapsed;
+
+      if (remaining <= 0 && !autoPlayingRef.current) {
+        autoPlayingRef.current = true;
+        clearInterval(interval);
+
+        const move = getRandomValidMove(state, playerId);
+        if (move) {
+          try {
+            let newState = playCard(state, playerId, move.cardIndex, move.row, move.col);
+
+            const nextPlayerId = newState.playerOrder[newState.currentTurn];
+            if (newState.phase === "playing" && !hasPlayableCard(newState, nextPlayerId)) {
+              newState = replaceDeadCards(newState, nextPlayerId);
+            }
+
+            await setRoom(roomId, newState);
+            setSelectedCard(null);
+          } catch {
+            // Move failed — state may have changed; next tick will re-evaluate
+          }
+        }
+        autoPlayingRef.current = false;
+      }
+    }, 1000);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [state, playerId, roomId]);
+
   // Handle cell click
   const handleCellClick = useCallback(
     async (row: number, col: number) => {
       if (!state || selectedCard === null) return;
 
+      const player = state.players[playerId];
+      const card = player?.hand?.[selectedCard];
+
       try {
         let newState = playCard(state, playerId, selectedCard, row, col);
+
+        // Play appropriate sound
+        if (card && isOneEyedJack(card)) {
+          removeChipSound();
+        } else {
+          playChipSound();
+        }
 
         // Check for dead cards for next player
         const nextPlayerId = newState.playerOrder[newState.currentTurn];
@@ -87,6 +198,12 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
     }
   }, [state, roomId]);
 
+  // Update sequences needed (host only, in lobby)
+  const handleUpdateSequencesNeeded = useCallback(async (n: number) => {
+    if (!state || state.hostId !== playerId) return;
+    await setRoom(roomId, { ...state, sequencesNeeded: n });
+  }, [state, playerId, roomId]);
+
   // Play again
   const handlePlayAgain = useCallback(async () => {
     if (!state) return;
@@ -99,6 +216,20 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
   const handleLeave = useCallback(() => {
     router.push("/");
   }, [router]);
+
+  // Toggle sound
+  const handleToggleSound = useCallback(() => {
+    const next = !soundOn;
+    setSoundOn(next);
+    setSoundEnabled(next);
+  }, [soundOn]);
+
+  // Toggle board flip
+  const handleToggleFlip = useCallback(() => {
+    const next = !boardFlipped;
+    setBoardFlipped(next);
+    localStorage.setItem(FLIP_STORAGE_KEY, String(next));
+  }, [boardFlipped]);
 
   if (!state) {
     return (
@@ -113,11 +244,13 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
 
   // Not in game
   if (!state.players[playerId]) {
+    const notInGameTeamCount = state.teams ? Object.keys(state.teams).length : 0;
+    const notInGameMaxPlayers = getMaxPlayers(state.mode, notInGameTeamCount);
     return (
       <div className="min-h-dvh flex items-center justify-center bg-gradient-to-b from-emerald-900 to-emerald-950">
         <div className="text-white text-center p-6">
           <p className="text-lg mb-4">
-            {Object.keys(state.players).length >= 3
+            {Object.keys(state.players).length >= notInGameMaxPlayers
               ? "This game is full."
               : state.phase !== "waiting"
               ? "This game has already started."
@@ -142,6 +275,7 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
         playerId={playerId}
         onStart={handleStart}
         onLeave={handleLeave}
+        onUpdateSequencesNeeded={handleUpdateSequencesNeeded}
         roomCode={roomId}
       />
     );
@@ -164,7 +298,12 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
     <div className="min-h-dvh flex flex-col bg-gradient-to-b from-emerald-900 to-emerald-950">
       {/* Status bar */}
       <div className="p-2 sm:p-3">
-        <GameStatus state={state} playerId={playerId} />
+        <GameStatus
+          state={state}
+          playerId={playerId}
+          soundOn={soundOn}
+          onToggleSound={handleToggleSound}
+        />
       </div>
 
       {/* Error toast */}
@@ -174,6 +313,34 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
         </div>
       )}
 
+      {/* Board flip toggle */}
+      <div className="flex justify-center mb-1">
+        <button
+          onClick={handleToggleFlip}
+          className="flex items-center gap-1 px-2 py-1 text-xs text-emerald-300/70 hover:text-emerald-200 transition-colors rounded"
+          title={boardFlipped ? "Reset board orientation" : "Flip board 180\u00b0"}
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{
+              transform: boardFlipped ? "rotate(180deg)" : "none",
+              transition: "transform 0.3s",
+            }}
+          >
+            <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+            <polyline points="21 3 21 9 15 9" />
+          </svg>
+          <span>{boardFlipped ? "Reset" : "Flip"}</span>
+        </button>
+      </div>
+
       {/* Board */}
       <div className="flex-1 flex items-center justify-center px-1 sm:px-4">
         <GameBoard
@@ -181,13 +348,20 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
           selectedCardIndex={selectedCard}
           playerId={playerId}
           onCellClick={handleCellClick}
+          boardFlipped={boardFlipped}
         />
       </div>
 
       {/* Sequence count */}
       <div className="text-center py-1">
         <span className="text-xs text-emerald-300/70">
-          Sequences: {state.sequences.filter((s) => s.color === player?.color).length} / {state.sequencesNeeded}
+          Sequences: {(() => {
+            if (state.mode === "teams" && state.teams) {
+              const teamInfo = getPlayerTeam(state.teams, playerId);
+              return teamInfo ? countTeamSequences(state.sequences, teamInfo.team.color) : 0;
+            }
+            return state.sequences.filter((s) => s.color === player?.color).length;
+          })()} / {state.sequencesNeeded}
         </span>
       </div>
 
@@ -209,6 +383,16 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
         onPlayAgain={handlePlayAgain}
         onLeave={handleLeave}
       />
+
+      {/* Chat - visible during playing and finished phases */}
+      {(state.phase === "playing" || state.phase === "finished") && player && (
+        <Chat
+          roomId={roomId}
+          playerId={playerId}
+          playerName={player.name}
+          playerColor={player.color}
+        />
+      )}
     </div>
   );
 }

@@ -44,6 +44,20 @@ function hydrateGameState(raw: Record<string, unknown>): GameState {
     }
   }
 
+  // Hydrate teams (Firebase may strip empty arrays in playerIds)
+  let teams: GameState["teams"] = null;
+  if (state.teams) {
+    const hydratedTeams: Record<string, { name: string; color: string; playerIds: string[] }> = {};
+    for (const [teamId, team] of Object.entries(state.teams as unknown as Record<string, Record<string, unknown>>)) {
+      hydratedTeams[teamId] = {
+        name: (team.name as string) ?? "",
+        color: (team.color as string) ?? "red",
+        playerIds: Array.isArray(team.playerIds) ? team.playerIds : [],
+      };
+    }
+    teams = hydratedTeams as GameState["teams"];
+  }
+
   return {
     ...state,
     chips,
@@ -51,11 +65,16 @@ function hydrateGameState(raw: Record<string, unknown>): GameState {
     sequences,
     playerOrder,
     players,
+    mode: state.mode ?? "solo",
+    teams,
     deckIndex: state.deckIndex ?? 0,
     currentTurn: state.currentTurn ?? 0,
     sequencesNeeded: state.sequencesNeeded ?? 2,
     winner: state.winner ?? null,
+    winnerLabel: state.winnerLabel ?? null,
     lastMove: state.lastMove ?? null,
+    turnStartedAt: state.turnStartedAt ?? null,
+    turnTimeLimit: state.turnTimeLimit ?? 90,
   };
 }
 

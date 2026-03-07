@@ -1,6 +1,7 @@
 "use client";
 
 import type { GameState } from "@/lib/game";
+import { getPlayerTeam } from "@/lib/teams";
 
 interface WinOverlayProps {
   state: GameState;
@@ -12,15 +13,28 @@ interface WinOverlayProps {
 export function WinOverlay({ state, playerId, onPlayAgain, onLeave }: WinOverlayProps) {
   if (state.phase !== "finished" || !state.winner) return null;
 
-  const isWinner = state.winner === playerId;
-  const winnerName = state.players[state.winner]?.name ?? "Unknown";
+  const isTeams = state.mode === "teams" && state.teams;
+
+  let isWinner = false;
+  let displayName = state.winnerLabel ?? "Unknown";
+
+  if (isTeams && state.teams) {
+    // In team mode, winner is a team ID
+    const playerTeam = getPlayerTeam(state.teams, playerId);
+    isWinner = playerTeam?.teamId === state.winner;
+  } else {
+    // Solo mode, winner is a player ID
+    isWinner = state.winner === playerId;
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl p-8 mx-4 text-center max-w-sm w-full">
-        <div className="text-5xl mb-4">{isWinner ? "🏆" : "😔"}</div>
+        <div className="text-5xl mb-4">{isWinner ? "\uD83C\uDFC6" : "\uD83D\uDE14"}</div>
         <h2 className="text-2xl font-bold mb-2">
-          {isWinner ? "You Won!" : `${winnerName} Wins!`}
+          {isWinner
+            ? (isTeams ? "Your Team Won!" : "You Won!")
+            : `${displayName} Wins!`}
         </h2>
         <p className="text-gray-500 mb-6">
           {isWinner

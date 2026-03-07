@@ -1,4 +1,14 @@
 import { BOARD, createDeck, shuffleDeck, findCardPositions, isOneEyedJack, isTwoEyedJack, type Card } from "./board";
+import type { GameMode, TeamsRecord } from "./teams";
+import {
+  assignPlayerToTeam,
+  getPlayerTeamColor,
+  getPlayerTeam,
+  buildTeamTurnOrder,
+  countTeamSequences,
+  getMaxPlayers,
+  createTeams,
+} from "./teams";
 
 export type PlayerColor = "red" | "blue" | "green";
 export const PLAYER_COLORS: PlayerColor[] = ["red", "blue", "green"];
@@ -17,6 +27,7 @@ export type ChipGrid = (PlayerColor | null)[][];
 export interface GameState {
   id: string;
   phase: "waiting" | "playing" | "finished";
+  mode: GameMode;
   players: Record<string, Player>;
   playerOrder: string[]; // player IDs in turn order
   currentTurn: number; // index into playerOrder
@@ -25,8 +36,12 @@ export interface GameState {
   deckIndex: number;
   sequences: Sequence[];
   sequencesNeeded: number;
-  winner: string | null; // player ID or null
+  winner: string | null; // player ID, team ID, or null
+  winnerLabel: string | null; // display name for the winner
+  teams: TeamsRecord | null; // null in solo mode
   lastMove: { row: number; col: number; card: Card; playerId: string } | null;
+  turnStartedAt: number | null;
+  turnTimeLimit: number;
   createdAt: number;
   hostId: string;
 }
@@ -39,22 +54,44 @@ export interface Sequence {
 const HAND_SIZE: Record<number, number> = {
   2: 7,
   3: 6,
+  4: 6,
+  5: 5,
+  6: 5,
 };
 
-const SEQUENCES_NEEDED: Record<number, number> = {
-  2: 2,
-  3: 1,
-};
+export interface CreateGameOptions {
+  mode: GameMode;
+  sequencesNeeded: number;
+  teamCount?: number; // 2 or 3, only for teams mode
+}
 
-export function createGame(hostId: string, hostName: string, roomId: string): GameState {
+export function createGame(
+  hostId: string,
+  hostName: string,
+  roomId: string,
+  options: CreateGameOptions = { mode: "solo", sequencesNeeded: 2 }
+): GameState {
+  const { mode, sequencesNeeded, teamCount = 2 } = options;
+
+  const isTeams = mode === "teams";
+  let teams: TeamsRecord | null = null;
+  let hostColor: PlayerColor = "red";
+
+  if (isTeams) {
+    teams = createTeams(teamCount);
+    teams = assignPlayerToTeam(teams, hostId);
+    hostColor = getPlayerTeamColor(teams, hostId) ?? "red";
+  }
+
   return {
     id: roomId,
     phase: "waiting",
+    mode,
     players: {
       [hostId]: {
         id: hostId,
         name: hostName,
-        color: "red",
+        color: hostColor,
         hand: [],
         connected: true,
       },
@@ -65,9 +102,13 @@ export function createGame(hostId: string, hostName: string, roomId: string): Ga
     deck: [],
     deckIndex: 0,
     sequences: [],
-    sequencesNeeded: 2,
+    sequencesNeeded,
     winner: null,
+    winnerLabel: null,
+    teams,
     lastMove: null,
+    turnStartedAt: null,
+    turnTimeLimit: 90,
     createdAt: Date.now(),
     hostId,
   };
@@ -75,10 +116,21 @@ export function createGame(hostId: string, hostName: string, roomId: string): Ga
 
 export function addPlayer(state: GameState, playerId: string, playerName: string): GameState {
   const playerCount = Object.keys(state.players).length;
-  if (playerCount >= 3) throw new Error("Game is full");
+  const teamCount = state.teams ? Object.keys(state.teams).length : 0;
+  const maxPlayers = getMaxPlayers(state.mode, teamCount);
+  if (playerCount >= maxPlayers) throw new Error("Game is full");
   if (state.phase !== "waiting") throw new Error("Game already started");
 
-  const color = PLAYER_COLORS[playerCount];
+  let color: PlayerColor;
+  let newTeams = state.teams;
+
+  if (state.mode === "teams" && state.teams) {
+    newTeams = assignPlayerToTeam(state.teams, playerId);
+    color = getPlayerTeamColor(newTeams, playerId) ?? PLAYER_COLORS[playerCount];
+  } else {
+    color = PLAYER_COLORS[playerCount];
+  }
+
   return {
     ...state,
     players: {
@@ -92,6 +144,7 @@ export function addPlayer(state: GameState, playerId: string, playerName: string
       },
     },
     playerOrder: [...state.playerOrder, playerId],
+    teams: newTeams,
   };
 }
 
@@ -99,8 +152,17 @@ export function startGame(state: GameState): GameState {
   const playerCount = Object.keys(state.players).length;
   if (playerCount < 2) throw new Error("Need at least 2 players");
 
-  const handSize = HAND_SIZE[playerCount] ?? 6;
-  const sequencesNeeded = SEQUENCES_NEEDED[playerCount] ?? 2;
+  if (state.mode === "teams" && state.teams) {
+    // Validate all teams have equal players
+    const teamIds = Object.keys(state.teams);
+    const teamSizes = teamIds.map((id) => state.teams![id].playerIds.length);
+    if (teamSizes.some((s) => s !== teamSizes[0])) {
+      throw new Error("Teams must have equal players");
+    }
+    if (teamSizes[0] < 1) throw new Error("Each team needs at least 1 player");
+  }
+
+  const handSize = HAND_SIZE[playerCount] ?? 5;
   const deck = shuffleDeck(createDeck());
   let deckIndex = 0;
 
@@ -111,18 +173,26 @@ export function startGame(state: GameState): GameState {
     players[id] = { ...player, hand };
   }
 
+  // Build turn order: in team mode, alternate between teams
+  const playerOrder =
+    state.mode === "teams" && state.teams
+      ? buildTeamTurnOrder(state.teams)
+      : state.playerOrder;
+
   return {
     ...state,
     phase: "playing",
     players,
+    playerOrder,
     deck,
     deckIndex,
-    sequencesNeeded,
     currentTurn: 0,
     chips: Array.from({ length: 10 }, () => Array(10).fill(null)),
     sequences: [],
     winner: null,
+    winnerLabel: null,
     lastMove: null,
+    turnStartedAt: Date.now(),
   };
 }
 
@@ -185,8 +255,28 @@ export function playCard(
   const newSequences = findAllSequences(newChips, state.sequences);
 
   // Check for winner
-  const playerSequences = countPlayerSequences(newSequences, player.color);
-  const isWinner = playerSequences >= state.sequencesNeeded;
+  let isWinner = false;
+  let winnerId: string | null = null;
+  let winnerLabel: string | null = null;
+
+  if (state.mode === "teams" && state.teams) {
+    const teamInfo = getPlayerTeam(state.teams, playerId);
+    if (teamInfo) {
+      const teamSeqs = countTeamSequences(newSequences, teamInfo.team.color);
+      isWinner = teamSeqs >= state.sequencesNeeded;
+      if (isWinner) {
+        winnerId = teamInfo.teamId;
+        winnerLabel = teamInfo.team.name;
+      }
+    }
+  } else {
+    const playerSeqs = countPlayerSequences(newSequences, player.color);
+    isWinner = playerSeqs >= state.sequencesNeeded;
+    if (isWinner) {
+      winnerId = playerId;
+      winnerLabel = player.name;
+    }
+  }
 
   // Advance turn
   const nextTurn = (state.currentTurn + 1) % state.playerOrder.length;
@@ -198,9 +288,11 @@ export function playCard(
     deckIndex: newDeckIndex,
     currentTurn: isWinner ? state.currentTurn : nextTurn,
     sequences: newSequences,
-    winner: isWinner ? playerId : null,
+    winner: isWinner ? winnerId : null,
+    winnerLabel: isWinner ? winnerLabel : null,
     phase: isWinner ? "finished" : "playing",
     lastMove: { row, col, card, playerId },
+    turnStartedAt: isWinner ? null : Date.now(),
   };
 }
 
@@ -328,6 +420,31 @@ export function getValidPositions(
 export function hasPlayableCard(state: GameState, playerId: string): boolean {
   const player = state.players[playerId];
   return player.hand.some((card) => getValidPositions(state, card).length > 0);
+}
+
+// Pick a random valid move for a player (random playable card + random valid position)
+export function getRandomValidMove(
+  state: GameState,
+  playerId: string
+): { cardIndex: number; row: number; col: number } | null {
+  const player = state.players[playerId];
+  if (!player) return null;
+
+  // Collect all cards that have at least one valid position
+  const playableCards: { cardIndex: number; positions: [number, number][] }[] = [];
+  for (let i = 0; i < player.hand.length; i++) {
+    const positions = getValidPositions(state, player.hand[i]);
+    if (positions.length > 0) {
+      playableCards.push({ cardIndex: i, positions });
+    }
+  }
+
+  if (playableCards.length === 0) return null;
+
+  // Pick a random card, then a random position
+  const chosen = playableCards[Math.floor(Math.random() * playableCards.length)];
+  const [row, col] = chosen.positions[Math.floor(Math.random() * chosen.positions.length)];
+  return { cardIndex: chosen.cardIndex, row, col };
 }
 
 // Replace dead cards in hand

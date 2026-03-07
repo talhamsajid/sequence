@@ -5,14 +5,31 @@ import { useRouter } from "next/navigation";
 import { createRoom, getRoom } from "@/lib/firebase";
 import { createGame } from "@/lib/game";
 import { generateRoomCode, getPlayerId, getPlayerName, setPlayerName, cn } from "@/lib/utils";
+import type { GameMode } from "@/lib/teams";
+import { getDefaultSequencesNeeded } from "@/lib/teams";
 
 export default function Home() {
   const router = useRouter();
   const [name, setName] = useState(() => getPlayerName() ?? "");
   const [joinCode, setJoinCode] = useState("");
-  const [mode, setMode] = useState<"home" | "join">("home");
+  const [view, setView] = useState<"home" | "create" | "join">("home");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Create game options
+  const [gameMode, setGameMode] = useState<GameMode>("solo");
+  const [teamCount, setTeamCount] = useState(2);
+  const [sequencesNeeded, setSequencesNeeded] = useState(2);
+
+  const updateMode = useCallback((mode: GameMode) => {
+    setGameMode(mode);
+    setSequencesNeeded(getDefaultSequencesNeeded(mode, mode === "solo" ? 2 : teamCount));
+  }, [teamCount]);
+
+  const updateTeamCount = useCallback((count: number) => {
+    setTeamCount(count);
+    setSequencesNeeded(getDefaultSequencesNeeded("teams", count));
+  }, []);
 
   const handleCreate = useCallback(async () => {
     if (!name.trim()) {
@@ -25,7 +42,11 @@ export default function Home() {
 
     const playerId = getPlayerId();
     const roomId = generateRoomCode();
-    const game = createGame(playerId, name.trim(), roomId);
+    const game = createGame(playerId, name.trim(), roomId, {
+      mode: gameMode,
+      sequencesNeeded,
+      teamCount: gameMode === "teams" ? teamCount : undefined,
+    });
 
     try {
       await createRoom(roomId, game);
@@ -34,7 +55,7 @@ export default function Home() {
       setError("Failed to create game. Check your connection.");
       setLoading(false);
     }
-  }, [name, router]);
+  }, [name, router, gameMode, sequencesNeeded, teamCount]);
 
   const handleJoin = useCallback(async () => {
     if (!name.trim()) {
@@ -62,7 +83,10 @@ export default function Home() {
         setLoading(false);
         return;
       }
-      if (Object.keys(room.players).length >= 3) {
+      const maxPlayers = room.mode === "teams" && room.teams
+        ? Object.keys(room.teams).length * 2
+        : 3;
+      if (Object.keys(room.players).length >= maxPlayers) {
         setError("Room is full");
         setLoading(false);
         return;
@@ -108,8 +132,113 @@ export default function Home() {
           </div>
         )}
 
-        {mode === "home" ? (
+        {view === "home" && (
           <div className="space-y-3">
+            <button
+              onClick={() => setView("create")}
+              className="w-full py-3.5 rounded-xl font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition-all active:scale-[0.98]"
+            >
+              Create Game
+            </button>
+
+            <button
+              onClick={() => setView("join")}
+              className="w-full py-3.5 rounded-xl font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-all active:scale-[0.98]"
+            >
+              Join Game
+            </button>
+          </div>
+        )}
+
+        {view === "create" && (
+          <div className="space-y-4">
+            {/* Mode selector */}
+            <div>
+              <label className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-2 block">
+                Game Mode
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => updateMode("solo")}
+                  className={cn(
+                    "py-2.5 rounded-lg font-semibold text-sm transition-all",
+                    gameMode === "solo"
+                      ? "bg-emerald-600 text-white ring-2 ring-emerald-600"
+                      : "bg-gray-50 text-gray-600 hover:bg-gray-100"
+                  )}
+                >
+                  Solo
+                </button>
+                <button
+                  onClick={() => updateMode("teams")}
+                  className={cn(
+                    "py-2.5 rounded-lg font-semibold text-sm transition-all",
+                    gameMode === "teams"
+                      ? "bg-emerald-600 text-white ring-2 ring-emerald-600"
+                      : "bg-gray-50 text-gray-600 hover:bg-gray-100"
+                  )}
+                >
+                  Teams
+                </button>
+              </div>
+              <p className="text-xs text-gray-400 mt-1.5">
+                {gameMode === "solo"
+                  ? "2-3 individual players"
+                  : `${teamCount} teams of 2 players each`}
+              </p>
+            </div>
+
+            {/* Team count (only for teams mode) */}
+            {gameMode === "teams" && (
+              <div>
+                <label className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-2 block">
+                  Number of Teams
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[2, 3].map((n) => (
+                    <button
+                      key={n}
+                      onClick={() => updateTeamCount(n)}
+                      className={cn(
+                        "py-2 rounded-lg font-semibold text-sm transition-all",
+                        teamCount === n
+                          ? "bg-emerald-600 text-white ring-2 ring-emerald-600"
+                          : "bg-gray-50 text-gray-600 hover:bg-gray-100"
+                      )}
+                    >
+                      {n} Teams
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-400 mt-1.5">
+                  {teamCount * 2} players total
+                </p>
+              </div>
+            )}
+
+            {/* Sequences needed */}
+            <div>
+              <label className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-2 block">
+                Sequences to Win
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {[1, 2, 3].map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setSequencesNeeded(n)}
+                    className={cn(
+                      "py-2 rounded-lg font-semibold text-sm transition-all",
+                      sequencesNeeded === n
+                        ? "bg-emerald-600 text-white ring-2 ring-emerald-600"
+                        : "bg-gray-50 text-gray-600 hover:bg-gray-100"
+                    )}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <button
               onClick={handleCreate}
               disabled={loading}
@@ -122,13 +251,18 @@ export default function Home() {
             </button>
 
             <button
-              onClick={() => setMode("join")}
-              className="w-full py-3.5 rounded-xl font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-all active:scale-[0.98]"
+              onClick={() => {
+                setView("home");
+                setError(null);
+              }}
+              className="w-full py-2 text-sm text-gray-400 hover:text-gray-600 transition-colors"
             >
-              Join Game
+              Back
             </button>
           </div>
-        ) : (
+        )}
+
+        {view === "join" && (
           <div className="space-y-3">
             <div>
               <label className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-1 block">
@@ -157,7 +291,7 @@ export default function Home() {
 
             <button
               onClick={() => {
-                setMode("home");
+                setView("home");
                 setError(null);
               }}
               className="w-full py-2 text-sm text-gray-400 hover:text-gray-600 transition-colors"
