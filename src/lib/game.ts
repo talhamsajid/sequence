@@ -108,7 +108,7 @@ export function createGame(
     teams,
     lastMove: null,
     turnStartedAt: null,
-    turnTimeLimit: 90,
+    turnTimeLimit: 60,
     createdAt: Date.now(),
     hostId,
   };
@@ -128,7 +128,9 @@ export function addPlayer(state: GameState, playerId: string, playerName: string
     newTeams = assignPlayerToTeam(state.teams, playerId);
     color = getPlayerTeamColor(newTeams, playerId) ?? PLAYER_COLORS[playerCount];
   } else {
-    color = PLAYER_COLORS[playerCount];
+    // Solo mode: pick the first color not already taken
+    const takenColors = new Set(Object.values(state.players).map((p) => p.color));
+    color = PLAYER_COLORS.find((c) => !takenColors.has(c)) ?? PLAYER_COLORS[playerCount];
   }
 
   return {
@@ -151,6 +153,14 @@ export function addPlayer(state: GameState, playerId: string, playerName: string
 export function startGame(state: GameState): GameState {
   const playerCount = Object.keys(state.players).length;
   if (playerCount < 2) throw new Error("Need at least 2 players");
+
+  // Enforce unique colors in solo mode
+  if (state.mode === "solo") {
+    const colors = Object.values(state.players).map((p) => p.color);
+    if (new Set(colors).size !== colors.length) {
+      throw new Error("Each player must have a unique chip color");
+    }
+  }
 
   if (state.mode === "teams" && state.teams) {
     // Validate all teams have equal players

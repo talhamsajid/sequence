@@ -89,9 +89,9 @@ interface PeerAudioNodes {
 
 // ── Factory ──────────────────────────────────────────────────────────
 
-export function createVoiceManager(): VoiceManager {
+export function createVoiceManager(initialMuted = false): VoiceManager {
   let localStream: MediaStream | null = null;
-  let muted = false;
+  let muted = initialMuted;
   let currentRoomId: string | null = null;
   let currentPeerId: string | null = null;
 

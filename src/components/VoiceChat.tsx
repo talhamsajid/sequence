@@ -42,9 +42,10 @@ export function VoiceChat({ roomId, playerId, playerName, playerColor, players }
   const [panelOpen, setPanelOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const managerRef = useRef<VoiceManager | null>(null);
+  const autoJoinedRef = useRef(false);
 
   useEffect(() => {
-    const manager = createVoiceManager();
+    const manager = createVoiceManager(true); // start muted
     managerRef.current = manager;
 
     manager.onPeerConnected((peerId) => {
@@ -64,11 +65,28 @@ export function VoiceChat({ roomId, playerId, playerName, playerColor, players }
       setLocalSpeaking(speaking);
     });
 
+    // Auto-join voice chat muted
+    if (!autoJoinedRef.current) {
+      autoJoinedRef.current = true;
+      setVoiceState("connecting");
+      manager.join(roomId, playerId).then(() => {
+        setVoiceState("muted");
+      }).catch((err) => {
+        const message =
+          err instanceof DOMException && err.name === "NotAllowedError"
+            ? "Mic access denied — tap mic to retry"
+            : "Voice chat unavailable";
+        setError(message);
+        setVoiceState("disconnected");
+        setTimeout(() => setError(null), 4000);
+      });
+    }
+
     return () => {
       manager.leave();
       managerRef.current = null;
     };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     return () => {
@@ -88,8 +106,7 @@ export function VoiceChat({ roomId, playerId, playerName, playerColor, players }
 
     try {
       await manager.join(roomId, playerId);
-      setVoiceState("connected");
-      setPanelOpen(true);
+      setVoiceState("muted"); // join muted by default
     } catch (err) {
       const message =
         err instanceof DOMException && err.name === "NotAllowedError"

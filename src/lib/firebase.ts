@@ -74,7 +74,7 @@ function hydrateGameState(raw: Record<string, unknown>): GameState {
     winnerLabel: state.winnerLabel ?? null,
     lastMove: state.lastMove ?? null,
     turnStartedAt: state.turnStartedAt ?? null,
-    turnTimeLimit: state.turnTimeLimit ?? 90,
+    turnTimeLimit: state.turnTimeLimit ?? 60,
   };
 }
 

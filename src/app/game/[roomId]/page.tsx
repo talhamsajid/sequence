@@ -114,25 +114,35 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
 
   // Turn timer: auto-play a random valid move when time expires (only active player's client)
   const autoPlayingRef = useRef(false);
-  useEffect(() => {
-    if (!state || state.phase !== "playing" || state.turnStartedAt === null) return;
+  const stateRef = useRef<GameState | null>(null);
+  stateRef.current = state;
 
-    const currentPlayerId = state.playerOrder[state.currentTurn];
-    const isMyTurn = currentPlayerId === playerId;
-    if (!isMyTurn) return;
+  const turnStartedAt = state?.turnStartedAt ?? null;
+  const turnTimeLimit = state?.turnTimeLimit ?? 60;
+  const currentTurnPlayerId = state?.phase === "playing" ? state.playerOrder[state.currentTurn] : null;
+  const isMyTurn = currentTurnPlayerId === playerId;
+
+  useEffect(() => {
+    if (!isMyTurn || turnStartedAt === null) return;
 
     const interval = setInterval(async () => {
-      const elapsed = Math.floor((Date.now() - state.turnStartedAt!) / 1000);
-      const remaining = state.turnTimeLimit - elapsed;
+      const elapsed = Math.floor((Date.now() - turnStartedAt) / 1000);
+      const remaining = turnTimeLimit - elapsed;
 
       if (remaining <= 0 && !autoPlayingRef.current) {
         autoPlayingRef.current = true;
         clearInterval(interval);
 
-        const move = getRandomValidMove(state, playerId);
+        const currentState = stateRef.current;
+        if (!currentState || currentState.phase !== "playing") {
+          autoPlayingRef.current = false;
+          return;
+        }
+
+        const move = getRandomValidMove(currentState, playerId);
         if (move) {
           try {
-            let newState = playCard(state, playerId, move.cardIndex, move.row, move.col);
+            let newState = playCard(currentState, playerId, move.cardIndex, move.row, move.col);
 
             const nextPlayerId = newState.playerOrder[newState.currentTurn];
             if (newState.phase === "playing" && !hasPlayableCard(newState, nextPlayerId)) {
@@ -152,7 +162,7 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
     return () => {
       clearInterval(interval);
     };
-  }, [state, playerId, roomId]);
+  }, [isMyTurn, turnStartedAt, turnTimeLimit, playerId, roomId]);
 
   // Handle cell click
   const handleCellClick = useCallback(
@@ -322,7 +332,6 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
 
   // Game
   const player = state.players[playerId];
-  const isMyTurn = state.playerOrder[state.currentTurn] === playerId;
   const hand = player?.hand ?? [];
 
   // Which cards in hand have valid moves
