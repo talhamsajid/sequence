@@ -9,7 +9,55 @@ import {
   remove,
   type Database,
 } from "firebase/database";
-import type { GameState } from "./game";
+import type { GameState, ChipGrid } from "./game";
+
+// Firebase RTDB strips null values and empty arrays.
+// This rehydrates the game state to ensure all fields have proper defaults.
+function hydrateGameState(raw: Record<string, unknown>): GameState {
+  const state = raw as unknown as GameState;
+
+  // Rebuild chips as proper 10x10 grid (Firebase drops null entries)
+  const chips: ChipGrid = Array.from({ length: 10 }, (_, r) => {
+    const row = (state.chips as unknown as Record<string, unknown>)?.[r];
+    if (!row) return Array(10).fill(null);
+    if (Array.isArray(row)) {
+      return Array.from({ length: 10 }, (_, c) => (row[c] as string) ?? null);
+    }
+    // Firebase may convert sparse arrays to objects
+    const rowObj = row as Record<string, string>;
+    return Array.from({ length: 10 }, (_, c) => rowObj[String(c)] ?? null);
+  });
+
+  // Ensure arrays exist
+  const deck = Array.isArray(state.deck) ? state.deck : [];
+  const sequences = Array.isArray(state.sequences) ? state.sequences : [];
+  const playerOrder = Array.isArray(state.playerOrder) ? state.playerOrder : [];
+
+  // Rebuild player hands (Firebase drops empty arrays)
+  const players: GameState["players"] = {};
+  if (state.players) {
+    for (const [id, player] of Object.entries(state.players)) {
+      players[id] = {
+        ...player,
+        hand: Array.isArray(player.hand) ? player.hand : [],
+      };
+    }
+  }
+
+  return {
+    ...state,
+    chips,
+    deck,
+    sequences,
+    playerOrder,
+    players,
+    deckIndex: state.deckIndex ?? 0,
+    currentTurn: state.currentTurn ?? 0,
+    sequencesNeeded: state.sequencesNeeded ?? 2,
+    winner: state.winner ?? null,
+    lastMove: state.lastMove ?? null,
+  };
+}
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -48,7 +96,7 @@ export async function createRoom(roomId: string, gameState: GameState): Promise<
 
 export async function getRoom(roomId: string): Promise<GameState | null> {
   const snapshot = await get(gameRef(roomId));
-  return snapshot.exists() ? (snapshot.val() as GameState) : null;
+  return snapshot.exists() ? hydrateGameState(snapshot.val()) : null;
 }
 
 export async function updateRoom(roomId: string, updates: Partial<GameState>): Promise<void> {
@@ -64,7 +112,7 @@ export function subscribeToRoom(
   callback: (state: GameState | null) => void
 ): () => void {
   const unsubscribe = onValue(gameRef(roomId), (snapshot) => {
-    callback(snapshot.exists() ? (snapshot.val() as GameState) : null);
+    callback(snapshot.exists() ? hydrateGameState(snapshot.val()) : null);
   });
   return unsubscribe;
 }
