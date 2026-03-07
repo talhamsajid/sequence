@@ -81,10 +81,11 @@ function FreeCell({ cellFlipped = false }: { cellFlipped?: boolean }) {
   return (
     <button
       className={cn(
-        "aspect-square rounded-sm flex items-center justify-center relative overflow-hidden",
+        "rounded-sm flex items-center justify-center relative overflow-hidden",
         "border border-yellow-600/60"
       )}
       style={{
+        aspectRatio: "167 / 243",
         background: "linear-gradient(135deg, #b8860b 0%, #d4a017 35%, #ffd700 55%, #d4a017 75%, #8b6914 100%)",
         boxShadow: "inset 0 1px 0 rgba(255,255,255,0.3), inset 0 -1px 0 rgba(0,0,0,0.2)",
         transform: cellFlipped ? "rotate(180deg)" : "none",
@@ -135,9 +136,9 @@ export function CardCell({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "aspect-square rounded-sm relative overflow-hidden",
+        "rounded-sm relative overflow-hidden",
         "transition-all duration-150",
-        "border",
+        "border bg-[#fafaf8]",
         !isHighlighted && !isLastMove && "border-gray-300/60",
         isHighlighted && "border-transparent",
         isLastMove && !isHighlighted && "border-amber-400/80",
@@ -146,6 +147,7 @@ export function CardCell({
         isInSequence && "brightness-95",
       )}
       style={{
+        aspectRatio: "167 / 243",
         boxShadow: isHighlighted
           ? "0 0 0 2px #f59e0b, 0 0 8px rgba(245,158,11,0.6)"
           : isLastMove
@@ -158,7 +160,7 @@ export function CardCell({
       <img
         src={imagePath}
         alt={cell}
-        className="absolute inset-0 w-full h-full object-cover"
+        className="absolute inset-0 w-full h-full"
         draggable={false}
       />
 

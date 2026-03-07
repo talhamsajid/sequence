@@ -39,7 +39,7 @@ export function GameBoard({
   }
 
   return (
-    <div className="w-full max-w-[min(98vw,480px)] mx-auto">
+    <div className="w-full max-w-[min(98vw,520px)] mx-auto">
       <div
         className="grid gap-[2px] sm:gap-[3px] p-1.5 sm:p-2.5 rounded-xl shadow-2xl"
         style={{
