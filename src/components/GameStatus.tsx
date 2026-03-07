@@ -11,6 +11,7 @@ interface GameStatusProps {
   playerId: string;
   soundOn?: boolean;
   onToggleSound?: () => void;
+  onLeave?: () => void;
 }
 
 function useTimeRemaining(turnStartedAt: number | null, turnTimeLimit: number, phase: string): number {
@@ -99,7 +100,7 @@ const colorText: Record<PlayerColor, string> = {
   green: "text-green-600",
 };
 
-export function GameStatus({ state, playerId, soundOn = true, onToggleSound }: GameStatusProps) {
+export function GameStatus({ state, playerId, soundOn = true, onToggleSound, onLeave }: GameStatusProps) {
   const currentPlayerId = state.playerOrder[state.currentTurn];
   const isMyTurn = currentPlayerId === playerId;
   const currentPlayer = state.players[currentPlayerId];
@@ -222,6 +223,31 @@ export function GameStatus({ state, playerId, soundOn = true, onToggleSound }: G
                   <line x1="17" y1="9" x2="23" y2="15" />
                 </>
               )}
+            </svg>
+          </button>
+        )}
+
+        {/* Leave game */}
+        {onLeave && (
+          <button
+            onClick={onLeave}
+            className="p-1.5 rounded-full hover:bg-red-50 transition-colors shrink-0"
+            title="Leave game"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-gray-400 hover:text-red-500 transition-colors"
+            >
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
             </svg>
           </button>
         )}

@@ -8,6 +8,7 @@ import {
   countTeamSequences,
   getMaxPlayers,
   createTeams,
+  removePlayerFromTeam,
 } from "./teams";
 
 export type PlayerColor = "red" | "blue" | "green";
@@ -147,6 +148,136 @@ export function addPlayer(state: GameState, playerId: string, playerName: string
     },
     playerOrder: [...state.playerOrder, playerId],
     teams: newTeams,
+  };
+}
+
+/**
+ * Remove a player from the game.
+ * - Lobby: removes from players, playerOrder, teams.
+ *   If host leaves, transfers host to next player. If no players left, returns null (delete room).
+ * - Playing: removes player, skips their turns, returns cards to deck.
+ *   If <2 players remain, the remaining player/team wins.
+ * - Finished: just removes from players.
+ */
+export function removePlayer(state: GameState, playerId: string): GameState | null {
+  if (!state.players[playerId]) return state;
+
+  const { [playerId]: _removed, ...remainingPlayers } = state.players;
+  const remainingCount = Object.keys(remainingPlayers).length;
+
+  // No players left — signal to delete room
+  if (remainingCount === 0) return null;
+
+  // Remove from playerOrder
+  const newPlayerOrder = state.playerOrder.filter((pid) => pid !== playerId);
+
+  // Remove from teams if applicable
+  const newTeams = state.teams ? removePlayerFromTeam(state.teams, playerId) : null;
+
+  // Transfer host if the leaving player is host
+  const newHostId = state.hostId === playerId ? newPlayerOrder[0] : state.hostId;
+
+  // Lobby phase — simple removal
+  if (state.phase === "waiting") {
+    return {
+      ...state,
+      players: remainingPlayers,
+      playerOrder: newPlayerOrder,
+      teams: newTeams,
+      hostId: newHostId,
+    };
+  }
+
+  // Finished phase — simple removal
+  if (state.phase === "finished") {
+    return {
+      ...state,
+      players: remainingPlayers,
+      playerOrder: newPlayerOrder,
+      teams: newTeams,
+      hostId: newHostId,
+    };
+  }
+
+  // Playing phase — need to handle turn advancement and win conditions
+
+  // If only 1 player remains, they win
+  if (remainingCount === 1) {
+    const lastPlayerId = newPlayerOrder[0];
+    const lastPlayer = remainingPlayers[lastPlayerId];
+
+    let winLabel = lastPlayer.name;
+    let winnerId: string = lastPlayerId;
+
+    if (state.mode === "teams" && newTeams) {
+      const teamInfo = getPlayerTeam(newTeams, lastPlayerId);
+      if (teamInfo) {
+        winnerId = teamInfo.teamId;
+        winLabel = teamInfo.team.name;
+      }
+    }
+
+    return {
+      ...state,
+      phase: "finished",
+      players: remainingPlayers,
+      playerOrder: newPlayerOrder,
+      teams: newTeams,
+      hostId: newHostId,
+      winner: winnerId,
+      winnerLabel: `${winLabel} (opponent left)`,
+      turnStartedAt: null,
+    };
+  }
+
+  // In teams mode, if an entire team is empty, the other team(s) win
+  if (state.mode === "teams" && newTeams) {
+    const emptyTeams = Object.entries(newTeams).filter(([, t]) => t.playerIds.length === 0);
+    if (emptyTeams.length > 0) {
+      // Find a team that still has players
+      const winningTeamEntry = Object.entries(newTeams).find(([, t]) => t.playerIds.length > 0);
+      if (winningTeamEntry) {
+        return {
+          ...state,
+          phase: "finished",
+          players: remainingPlayers,
+          playerOrder: newPlayerOrder,
+          teams: newTeams,
+          hostId: newHostId,
+          winner: winningTeamEntry[0],
+          winnerLabel: `${winningTeamEntry[1].name} (opponent left)`,
+          turnStartedAt: null,
+        };
+      }
+    }
+  }
+
+  // Fix currentTurn index — if the leaving player was before or at currentTurn, adjust
+  const oldIndex = state.playerOrder.indexOf(playerId);
+  let newCurrentTurn = state.currentTurn;
+
+  if (oldIndex < state.currentTurn) {
+    // Player before current turn left, shift index back
+    newCurrentTurn = state.currentTurn - 1;
+  } else if (oldIndex === state.currentTurn) {
+    // It was the leaving player's turn — keep same index (next player slides in)
+    // But clamp to valid range
+    newCurrentTurn = state.currentTurn;
+  }
+
+  // Clamp to valid range
+  if (newCurrentTurn >= newPlayerOrder.length) {
+    newCurrentTurn = 0;
+  }
+
+  return {
+    ...state,
+    players: remainingPlayers,
+    playerOrder: newPlayerOrder,
+    currentTurn: newCurrentTurn,
+    teams: newTeams,
+    hostId: newHostId,
+    turnStartedAt: Date.now(), // reset timer for new current player
   };
 }
 

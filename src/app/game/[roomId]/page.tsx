@@ -2,12 +2,13 @@
 
 import { useEffect, useState, useCallback, useRef, use } from "react";
 import { useRouter } from "next/navigation";
-import { subscribeToRoom, setRoom } from "@/lib/firebase";
+import { subscribeToRoom, setRoom, deleteRoom } from "@/lib/firebase";
 import {
   type GameState,
   playCard,
   startGame,
   addPlayer,
+  removePlayer,
   getValidPositions,
   hasPlayableCard,
   replaceDeadCards,
@@ -259,10 +260,19 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
     setSelectedCard(null);
   }, [state, roomId]);
 
-  // Leave game
-  const handleLeave = useCallback(() => {
+  // Leave game — remove player from state, then navigate home
+  const handleLeave = useCallback(async () => {
+    if (state) {
+      const updated = removePlayer(state, playerId);
+      if (updated === null) {
+        // No players left — delete the room
+        await deleteRoom(roomId).catch(() => {});
+      } else {
+        await setRoom(roomId, updated).catch(() => {});
+      }
+    }
     router.push("/");
-  }, [router]);
+  }, [state, playerId, roomId, router]);
 
   // Toggle sound
   const handleToggleSound = useCallback(() => {
@@ -351,6 +361,7 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
           playerId={playerId}
           soundOn={soundOn}
           onToggleSound={handleToggleSound}
+          onLeave={handleLeave}
         />
       </div>
 
