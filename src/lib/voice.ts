@@ -54,10 +54,14 @@ export interface PeerAudioState {
 }
 
 export interface VoiceManager {
+  /** Join signaling channel only (no mic, receive-only). Safe to call without user gesture. */
   join(roomId: string, peerId: string): Promise<void>;
+  /** Acquire mic and add local tracks to all peers. Requires user gesture on first call. */
+  acquireMic(): Promise<void>;
   leave(): void;
-  toggleMute(): boolean;
+  toggleMute(): Promise<boolean>;
   isMuted(): boolean;
+  hasMic(): boolean;
   setPeerVolume(peerId: string, volume: number): void;
   setPeerMuted(peerId: string, muted: boolean): void;
   getPeerAudioStates(): Map<string, PeerAudioState>;
@@ -75,7 +79,7 @@ const ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.relay.metered.ca:80" },
 ];
 
-const SPEAKING_THRESHOLD = 15; // RMS threshold for "speaking"
+const SPEAKING_THRESHOLD = 15;
 const SPEAKING_POLL_MS = 100;
 
 // ── Audio node bundle per peer ───────────────────────────────────────
@@ -89,25 +93,21 @@ interface PeerAudioNodes {
 
 // ── Factory ──────────────────────────────────────────────────────────
 
-export function createVoiceManager(initialMuted = false): VoiceManager {
+export function createVoiceManager(): VoiceManager {
   let localStream: MediaStream | null = null;
-  let muted = initialMuted;
+  let muted = true; // always start muted
+  let micAcquired = false;
   let currentRoomId: string | null = null;
   let currentPeerId: string | null = null;
 
-  // Audio context for processing
   let audioCtx: AudioContext | null = null;
   let localAnalyser: AnalyserNode | null = null;
   let localSpeaking = false;
 
-  // Peer connections keyed by remote peerId
   const connections = new Map<string, RTCPeerConnection>();
-  // Audio processing nodes per peer
   const peerAudio = new Map<string, PeerAudioNodes>();
-  // Peer audio states (volume, muted, speaking)
   const peerStates = new Map<string, PeerAudioState>();
 
-  // Firebase unsubscribes to clean up on leave
   const unsubscribes: Unsubscribe[] = [];
   const firebaseRefs: ReturnType<typeof ref>[] = [];
 
@@ -148,12 +148,10 @@ export function createVoiceManager(initialMuted = false): VoiceManager {
     source.connect(gain);
     gain.connect(ctx.destination);
 
-    // Also play via audio element for reliable playback
     const audioElement = new Audio();
     audioElement.srcObject = stream;
     audioElement.autoplay = true;
-    // Mute the element since we're routing through Web Audio API
-    audioElement.volume = 0;
+    audioElement.volume = 0; // routed through Web Audio API
 
     const existing = peerStates.get(peerId);
     const vol = existing?.volume ?? 1;
@@ -196,7 +194,6 @@ export function createVoiceManager(initialMuted = false): VoiceManager {
     speakingInterval = setInterval(() => {
       let changed = false;
 
-      // Local speaking
       if (localAnalyser && !muted) {
         const rms = getRMS(localAnalyser);
         const wasSpeaking = localSpeaking;
@@ -207,7 +204,6 @@ export function createVoiceManager(initialMuted = false): VoiceManager {
         changed = true;
       }
 
-      // Peer speaking
       for (const [peerId, nodes] of peerAudio) {
         const state = peerStates.get(peerId);
         if (!state) continue;
@@ -249,12 +245,14 @@ export function createVoiceManager(initialMuted = false): VoiceManager {
     roomId: string,
     localId: string,
     remoteId: string,
-    stream: MediaStream,
   ): RTCPeerConnection {
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
 
-    for (const track of stream.getTracks()) {
-      pc.addTrack(track, stream);
+    // Add local tracks if we have them
+    if (localStream) {
+      for (const track of localStream.getTracks()) {
+        pc.addTrack(track, localStream);
+      }
     }
 
     pc.onicecandidate = (event) => {
@@ -263,12 +261,11 @@ export function createVoiceManager(initialMuted = false): VoiceManager {
           getDb(),
           `games/${roomId}/voice/${localId}/ice/${remoteId}`,
         );
-        const candidateData: IceCandidateData = {
+        push(iceRef, {
           candidate: event.candidate.candidate,
           sdpMid: event.candidate.sdpMid,
           sdpMLineIndex: event.candidate.sdpMLineIndex,
-        };
-        push(iceRef, candidateData);
+        } as IceCandidateData);
       }
     };
 
@@ -280,14 +277,10 @@ export function createVoiceManager(initialMuted = false): VoiceManager {
     };
 
     pc.oniceconnectionstatechange = () => {
-      const state = pc.iceConnectionState;
-      if (state === "connected" || state === "completed") {
+      const s = pc.iceConnectionState;
+      if (s === "connected" || s === "completed") {
         peerConnectedCb?.(remoteId);
-      } else if (
-        state === "disconnected" ||
-        state === "failed" ||
-        state === "closed"
-      ) {
+      } else if (s === "disconnected" || s === "failed" || s === "closed") {
         peerDisconnectedCb?.(remoteId);
         cleanupPeer(remoteId);
       }
@@ -335,24 +328,20 @@ export function createVoiceManager(initialMuted = false): VoiceManager {
 
   // ── Public API ─────────────────────────────────────────────────────
 
+  /**
+   * Join the voice signaling channel. Does NOT request mic.
+   * Can receive audio from peers but won't send anything yet.
+   */
   async function join(roomId: string, peerId: string): Promise<void> {
-    if (currentRoomId) {
-      leave();
-    }
+    if (currentRoomId) leave();
 
     currentRoomId = roomId;
     currentPeerId = peerId;
 
-    localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-    for (const track of localStream.getAudioTracks()) {
-      track.enabled = !muted;
-    }
-
-    // Setup local analyser for speaking detection
-    setupLocalAnalyser(localStream);
+    // Start speaking detection (for remote peers)
     startSpeakingDetection();
 
+    // Announce presence
     await set(peerRef(roomId, peerId), { joined: true });
 
     // Listen for offers FROM other peers TO us
@@ -361,13 +350,13 @@ export function createVoiceManager(initialMuted = false): VoiceManager {
 
     const offersUnsub = onChildAdded(offersRef, async (snapshot) => {
       const remotePeerId = snapshot.key;
-      if (!remotePeerId || !localStream) return;
+      if (!remotePeerId) return;
 
       const offerData = snapshot.val() as SignalData;
       if (!offerData?.sdp) return;
       if (connections.has(remotePeerId)) return;
 
-      const pc = createPeerConnection(roomId, peerId, remotePeerId, localStream);
+      const pc = createPeerConnection(roomId, peerId, remotePeerId);
 
       try {
         await pc.setRemoteDescription(
@@ -396,11 +385,11 @@ export function createVoiceManager(initialMuted = false): VoiceManager {
 
     const peerJoinUnsub = onChildAdded(voiceRootRef, async (snapshot) => {
       const remotePeerId = snapshot.key;
-      if (!remotePeerId || remotePeerId === peerId || !localStream) return;
+      if (!remotePeerId || remotePeerId === peerId) return;
       if (peerId >= remotePeerId) return;
       if (connections.has(remotePeerId)) return;
 
-      const pc = createPeerConnection(roomId, peerId, remotePeerId, localStream);
+      const pc = createPeerConnection(roomId, peerId, remotePeerId);
 
       try {
         const offer = await pc.createOffer();
@@ -448,6 +437,32 @@ export function createVoiceManager(initialMuted = false): VoiceManager {
     unsubscribes.push(peerLeaveUnsub);
   }
 
+  /**
+   * Acquire microphone and add tracks to all existing peer connections.
+   * Must be called from a user gesture (click/tap handler).
+   */
+  async function acquireMic(): Promise<void> {
+    if (micAcquired && localStream) return;
+
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    micAcquired = true;
+
+    // Start muted — disable tracks
+    for (const track of localStream.getAudioTracks()) {
+      track.enabled = !muted;
+    }
+
+    // Setup local analyser
+    setupLocalAnalyser(localStream);
+
+    // Add tracks to all existing peer connections
+    for (const [, pc] of connections) {
+      for (const track of localStream.getTracks()) {
+        pc.addTrack(track, localStream);
+      }
+    }
+  }
+
   function leave(): void {
     stopSpeakingDetection();
 
@@ -469,6 +484,8 @@ export function createVoiceManager(initialMuted = false): VoiceManager {
 
     localAnalyser = null;
     localSpeaking = false;
+    micAcquired = false;
+    muted = true;
 
     if (audioCtx) {
       audioCtx.close().catch(() => {});
@@ -483,7 +500,16 @@ export function createVoiceManager(initialMuted = false): VoiceManager {
     currentPeerId = null;
   }
 
-  function toggleMute(): boolean {
+  /**
+   * Toggle mute. On first unmute, acquires mic (requires user gesture).
+   * Returns the new muted state.
+   */
+  async function toggleMute(): Promise<boolean> {
+    if (muted && !micAcquired) {
+      // First unmute — need to acquire mic (user gesture context)
+      await acquireMic();
+    }
+
     muted = !muted;
     if (localStream) {
       for (const track of localStream.getAudioTracks()) {
@@ -499,6 +525,10 @@ export function createVoiceManager(initialMuted = false): VoiceManager {
 
   function isMutedFn(): boolean {
     return muted;
+  }
+
+  function hasMicFn(): boolean {
+    return micAcquired;
   }
 
   function setPeerVolume(peerId: string, volume: number): void {
@@ -529,9 +559,11 @@ export function createVoiceManager(initialMuted = false): VoiceManager {
 
   return {
     join,
+    acquireMic,
     leave,
     toggleMute,
     isMuted: isMutedFn,
+    hasMic: hasMicFn,
     setPeerVolume,
     setPeerMuted,
     getPeerAudioStates: () => new Map(peerStates),

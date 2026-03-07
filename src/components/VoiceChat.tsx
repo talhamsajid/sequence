@@ -45,7 +45,7 @@ export function VoiceChat({ roomId, playerId, playerName, playerColor, players }
   const autoJoinedRef = useRef(false);
 
   useEffect(() => {
-    const manager = createVoiceManager(true); // start muted
+    const manager = createVoiceManager();
     managerRef.current = manager;
 
     manager.onPeerConnected((peerId) => {
@@ -65,20 +65,14 @@ export function VoiceChat({ roomId, playerId, playerName, playerColor, players }
       setLocalSpeaking(speaking);
     });
 
-    // Auto-join voice chat muted
+    // Auto-join signaling channel (no mic needed, no user gesture required)
     if (!autoJoinedRef.current) {
       autoJoinedRef.current = true;
       setVoiceState("connecting");
       manager.join(roomId, playerId).then(() => {
-        setVoiceState("muted");
-      }).catch((err) => {
-        const message =
-          err instanceof DOMException && err.name === "NotAllowedError"
-            ? "Mic access denied — tap mic to retry"
-            : "Voice chat unavailable";
-        setError(message);
+        setVoiceState("muted"); // joined but mic not acquired yet
+      }).catch(() => {
         setVoiceState("disconnected");
-        setTimeout(() => setError(null), 4000);
       });
     }
 
@@ -97,6 +91,7 @@ export function VoiceChat({ roomId, playerId, playerName, playerColor, players }
     };
   }, [roomId]);
 
+  // Manual join (if auto-join failed or after disconnect)
   const handleJoin = useCallback(async () => {
     const manager = managerRef.current;
     if (!manager) return;
@@ -106,23 +101,30 @@ export function VoiceChat({ roomId, playerId, playerName, playerColor, players }
 
     try {
       await manager.join(roomId, playerId);
-      setVoiceState("muted"); // join muted by default
-    } catch (err) {
-      const message =
-        err instanceof DOMException && err.name === "NotAllowedError"
-          ? "Microphone access denied"
-          : "Failed to join voice chat";
-      setError(message);
+      setVoiceState("muted");
+    } catch {
+      setError("Failed to join voice chat");
       setVoiceState("disconnected");
       setTimeout(() => setError(null), 3000);
     }
   }, [roomId, playerId]);
 
-  const handleToggleMute = useCallback(() => {
+  // Toggle mute — acquires mic on first unmute (user gesture context)
+  const handleToggleMute = useCallback(async () => {
     const manager = managerRef.current;
     if (!manager) return;
-    const nowMuted = manager.toggleMute();
-    setVoiceState(nowMuted ? "muted" : "connected");
+
+    try {
+      const nowMuted = await manager.toggleMute();
+      setVoiceState(nowMuted ? "muted" : "connected");
+    } catch (err) {
+      const message =
+        err instanceof DOMException && err.name === "NotAllowedError"
+          ? "Microphone access denied"
+          : "Failed to access microphone";
+      setError(message);
+      setTimeout(() => setError(null), 3000);
+    }
   }, []);
 
   const handleClick = useCallback(() => {
@@ -188,7 +190,6 @@ export function VoiceChat({ roomId, playerId, playerName, playerColor, players }
       {/* Voice panel */}
       {isActive && panelOpen && (
         <div className="fixed bottom-20 left-4 z-40 w-56 bg-black/80 backdrop-blur-md rounded-xl border border-white/10 shadow-2xl overflow-hidden">
-          {/* Header */}
           <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
             <span className="text-xs font-semibold text-white/80 uppercase tracking-wider">
               Voice Chat
@@ -203,9 +204,7 @@ export function VoiceChat({ roomId, playerId, playerName, playerColor, players }
             </button>
           </div>
 
-          {/* Participants */}
           <div className="p-2 space-y-1 max-h-60 overflow-y-auto">
-            {/* Local player */}
             <VoiceParticipant
               name={playerName}
               color={playerColor}
@@ -216,7 +215,6 @@ export function VoiceChat({ roomId, playerId, playerName, playerColor, players }
               onToggleMute={handleToggleMute}
             />
 
-            {/* Remote peers */}
             {Array.from(connectedPeers).map((peerId) => {
               const player = players[peerId];
               const state = peerStates.get(peerId);
@@ -242,7 +240,6 @@ export function VoiceChat({ roomId, playerId, playerName, playerColor, players }
             )}
           </div>
 
-          {/* Disconnect */}
           <div className="px-2 pb-2">
             <button
               onClick={handleDisconnect}
@@ -256,7 +253,6 @@ export function VoiceChat({ roomId, playerId, playerName, playerColor, players }
 
       {/* Floating button area */}
       <div className="fixed bottom-20 left-4 z-40 flex items-center gap-2">
-        {/* Main mic button */}
         <button
           onClick={handleClick}
           className={cn(
@@ -268,11 +264,10 @@ export function VoiceChat({ roomId, playerId, playerName, playerColor, players }
             voiceState === "disconnected"
               ? "Join voice chat"
               : voiceState === "muted"
-                ? "Unmute"
+                ? "Unmute (tap to enable mic)"
                 : "Mute"
           }
         >
-          {/* Avatar overlay */}
           <span className="absolute -top-1 -right-1 text-sm select-none">
             {getPlayerAvatar(playerId)}
           </span>
@@ -283,13 +278,11 @@ export function VoiceChat({ roomId, playerId, playerName, playerColor, players }
           )}
         </button>
 
-        {/* Expand panel button (when connected but panel closed) */}
         {isActive && !panelOpen && (
           <button
             onClick={() => setPanelOpen(true)}
             className="h-8 px-2 bg-black/60 backdrop-blur-sm rounded-full flex items-center gap-1.5 text-white/70 hover:text-white/90 transition-colors border border-white/10"
           >
-            {/* Peer avatars */}
             {Array.from(connectedPeers).slice(0, 3).map((peerId) => {
               const state = peerStates.get(peerId);
               const color = players[peerId]?.color ?? "blue";
@@ -349,7 +342,6 @@ function VoiceParticipant({
   return (
     <div className="group">
       <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white/5 transition-colors">
-        {/* Avatar with speaking ring */}
         <div className="relative shrink-0">
           <div
             className={cn(
@@ -362,7 +354,6 @@ function VoiceParticipant({
           >
             {avatar}
           </div>
-          {/* Speaking pulse dot */}
           {speaking && (
             <div className={cn(
               "absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full animate-pulse border border-black/40",
@@ -371,7 +362,6 @@ function VoiceParticipant({
           )}
         </div>
 
-        {/* Name */}
         <div className="flex-1 min-w-0">
           <p className="text-xs font-medium text-white/90 truncate">
             {name}
@@ -382,9 +372,7 @@ function VoiceParticipant({
           )}
         </div>
 
-        {/* Controls */}
         <div className="flex items-center gap-1 shrink-0">
-          {/* Volume toggle (for remote peers) */}
           {!isSelf && onVolumeChange && (
             <button
               onClick={() => setShowSlider(!showSlider)}
@@ -394,7 +382,6 @@ function VoiceParticipant({
               <SpeakerIcon size={12} muted={muted} volume={volume ?? 1} />
             </button>
           )}
-          {/* Mute button */}
           <button
             onClick={onToggleMute}
             className={cn(
@@ -410,7 +397,6 @@ function VoiceParticipant({
         </div>
       </div>
 
-      {/* Volume slider (for remote peers) */}
       {!isSelf && showSlider && onVolumeChange && (
         <div className="px-3 pb-1.5 flex items-center gap-2">
           <SpeakerIcon size={10} muted={false} volume={0} />
