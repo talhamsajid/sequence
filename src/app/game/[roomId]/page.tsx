@@ -15,7 +15,8 @@ import {
 } from "@/lib/game";
 import { isOneEyedJack } from "@/lib/board";
 import { getPlayerId, getPlayerName } from "@/lib/utils";
-import { getMaxPlayers, getPlayerTeam, countTeamSequences } from "@/lib/teams";
+import { getMaxPlayers, getPlayerTeam, countTeamSequences, switchPlayerTeam, getPlayerTeamColor } from "@/lib/teams";
+import type { PlayerColor } from "@/lib/game";
 import {
   playChipSound,
   yourTurnSound,
@@ -204,6 +205,41 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
     await setRoom(roomId, { ...state, sequencesNeeded: n });
   }, [state, playerId, roomId]);
 
+  // Switch team (lobby only, teams mode)
+  const handleSwitchTeam = useCallback(async (targetTeamId: string) => {
+    if (!state || state.mode !== "teams" || !state.teams) return;
+    const newTeams = switchPlayerTeam(state.teams, playerId, targetTeamId);
+    if (!newTeams) return;
+
+    const newColor = getPlayerTeamColor(newTeams, playerId) ?? state.players[playerId].color;
+    await setRoom(roomId, {
+      ...state,
+      teams: newTeams,
+      players: {
+        ...state.players,
+        [playerId]: { ...state.players[playerId], color: newColor },
+      },
+    });
+  }, [state, playerId, roomId]);
+
+  // Change chip color (lobby only, solo mode)
+  const handleChangeColor = useCallback(async (color: PlayerColor) => {
+    if (!state || state.phase !== "waiting") return;
+    // Check no other player already has this color
+    const taken = Object.entries(state.players).some(
+      ([pid, p]) => pid !== playerId && p.color === color
+    );
+    if (taken) return;
+
+    await setRoom(roomId, {
+      ...state,
+      players: {
+        ...state.players,
+        [playerId]: { ...state.players[playerId], color },
+      },
+    });
+  }, [state, playerId, roomId]);
+
   // Play again
   const handlePlayAgain = useCallback(async () => {
     if (!state) return;
@@ -276,6 +312,8 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
         onStart={handleStart}
         onLeave={handleLeave}
         onUpdateSequencesNeeded={handleUpdateSequencesNeeded}
+        onSwitchTeam={handleSwitchTeam}
+        onChangeColor={handleChangeColor}
         roomCode={roomId}
       />
     );

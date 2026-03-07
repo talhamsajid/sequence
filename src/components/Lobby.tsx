@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { GameState, PlayerColor } from "@/lib/game";
 import { cn } from "@/lib/utils";
-import { getMaxPlayers, getMinPlayers } from "@/lib/teams";
+import { getMaxPlayers, getMinPlayers, getPlayerTeam } from "@/lib/teams";
 
 interface LobbyProps {
   state: GameState;
@@ -11,8 +11,18 @@ interface LobbyProps {
   onStart: () => void;
   onLeave: () => void;
   onUpdateSequencesNeeded: (n: number) => void;
+  onSwitchTeam: (targetTeamId: string) => void;
+  onChangeColor: (color: PlayerColor) => void;
   roomCode: string;
 }
+
+const ALL_COLORS: PlayerColor[] = ["red", "blue", "green"];
+
+const colorRing: Record<PlayerColor, string> = {
+  red: "ring-red-500",
+  blue: "ring-blue-500",
+  green: "ring-green-500",
+};
 
 const colorDot: Record<PlayerColor, string> = {
   red: "bg-red-500",
@@ -20,12 +30,13 @@ const colorDot: Record<PlayerColor, string> = {
   green: "bg-green-500",
 };
 
-export function Lobby({ state, playerId, onStart, onLeave, onUpdateSequencesNeeded, roomCode }: LobbyProps) {
+export function Lobby({ state, playerId, onStart, onLeave, onUpdateSequencesNeeded, onSwitchTeam, onChangeColor, roomCode }: LobbyProps) {
   const [copied, setCopied] = useState(false);
   const isHost = state.hostId === playerId;
   const playerCount = Object.keys(state.players).length;
   const isTeams = state.mode === "teams";
   const teamCount = state.teams ? Object.keys(state.teams).length : 0;
+  const myTeam = isTeams && state.teams ? getPlayerTeam(state.teams, playerId) : null;
   const maxPlayers = getMaxPlayers(state.mode, teamCount);
   const minPlayers = getMinPlayers(state.mode, teamCount);
 
@@ -82,6 +93,15 @@ export function Lobby({ state, playerId, onStart, onLeave, onUpdateSequencesNeed
                   <span className="text-xs text-gray-400">
                     ({team.playerIds.length}/2)
                   </span>
+                  {/* Switch team button — show if player is on a different team and this team has room */}
+                  {myTeam && myTeam.teamId !== teamId && team.playerIds.length < 2 && (
+                    <button
+                      onClick={() => onSwitchTeam(teamId)}
+                      className="ml-auto text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-medium hover:bg-blue-100 transition-colors active:scale-95"
+                    >
+                      Join
+                    </button>
+                  )}
                 </div>
                 <div className="space-y-1.5 ml-5">
                   {team.playerIds.map((pid) => {
@@ -115,15 +135,47 @@ export function Lobby({ state, playerId, onStart, onLeave, onUpdateSequencesNeed
             {state.playerOrder.map((pid) => {
               const p = state.players[pid];
               if (!p) return null;
+              const isMe = pid === playerId;
+              const takenColors = new Set(
+                Object.entries(state.players)
+                  .filter(([id]) => id !== playerId)
+                  .map(([, pl]) => pl.color)
+              );
               return (
                 <div
                   key={pid}
                   className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg"
                 >
-                  <div className={cn("w-4 h-4 rounded-full", colorDot[p.color])} />
+                  {/* Color picker for current player, static dot for others */}
+                  {isMe ? (
+                    <div className="flex gap-1.5">
+                      {ALL_COLORS.map((c) => {
+                        const taken = takenColors.has(c);
+                        const selected = p.color === c;
+                        return (
+                          <button
+                            key={c}
+                            onClick={() => !taken && onChangeColor(c)}
+                            disabled={taken}
+                            className={cn(
+                              "w-5 h-5 rounded-full transition-all",
+                              colorDot[c],
+                              selected && "ring-2 ring-offset-1",
+                              selected && colorRing[c],
+                              taken && !selected && "opacity-25 cursor-not-allowed",
+                              !taken && !selected && "opacity-60 hover:opacity-100 cursor-pointer hover:scale-110"
+                            )}
+                            title={taken ? "Taken" : `Pick ${c}`}
+                          />
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className={cn("w-4 h-4 rounded-full", colorDot[p.color])} />
+                  )}
                   <span className="font-medium text-sm">
                     {p.name}
-                    {pid === playerId && (
+                    {isMe && (
                       <span className="text-gray-400 ml-1">(you)</span>
                     )}
                   </span>

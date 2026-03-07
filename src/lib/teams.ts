@@ -151,6 +151,38 @@ export function countTeamSequences(
 }
 
 /**
+ * Move a player from their current team to a target team.
+ * Returns null if the target team is already full (2 players).
+ */
+export function switchPlayerTeam(
+  teams: TeamsRecord,
+  playerId: string,
+  targetTeamId: string
+): TeamsRecord | null {
+  const targetTeam = teams[targetTeamId];
+  if (!targetTeam) return null;
+  if (targetTeam.playerIds.length >= 2) return null;
+  if (targetTeam.playerIds.includes(playerId)) return null;
+
+  // Remove from current team, add to target
+  const updated: TeamsRecord = {};
+  for (const [teamId, team] of Object.entries(teams)) {
+    if (teamId === targetTeamId) {
+      updated[teamId] = {
+        ...team,
+        playerIds: [...team.playerIds, playerId],
+      };
+    } else {
+      updated[teamId] = {
+        ...team,
+        playerIds: team.playerIds.filter((id) => id !== playerId),
+      };
+    }
+  }
+  return updated;
+}
+
+/**
  * Get default sequences needed based on mode and player/team count.
  */
 export function getDefaultSequencesNeeded(
