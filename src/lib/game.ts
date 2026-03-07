@@ -334,6 +334,7 @@ export function startGame(state: GameState): GameState {
     winnerLabel: null,
     lastMove: null,
     turnStartedAt: Date.now(),
+    turnTimeLimit: 60,
   };
 }
 
