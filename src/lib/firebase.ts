@@ -1,4 +1,4 @@
-import { initializeApp, getApps } from "firebase/app";
+import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
 import {
   getDatabase,
   ref,
@@ -7,7 +7,7 @@ import {
   onValue,
   update,
   remove,
-  type DatabaseReference,
+  type Database,
 } from "firebase/database";
 import type { GameState } from "./game";
 
@@ -21,11 +21,25 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-const db = getDatabase(app);
+let _app: FirebaseApp | null = null;
+let _db: Database | null = null;
 
-function gameRef(roomId: string): DatabaseReference {
-  return ref(db, `games/${roomId}`);
+function getApp(): FirebaseApp {
+  if (!_app) {
+    _app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+  }
+  return _app;
+}
+
+function getDb(): Database {
+  if (!_db) {
+    _db = getDatabase(getApp());
+  }
+  return _db;
+}
+
+function gameRef(roomId: string) {
+  return ref(getDb(), `games/${roomId}`);
 }
 
 export async function createRoom(roomId: string, gameState: GameState): Promise<void> {
@@ -58,5 +72,3 @@ export function subscribeToRoom(
 export async function deleteRoom(roomId: string): Promise<void> {
   await remove(gameRef(roomId));
 }
-
-export { db };
