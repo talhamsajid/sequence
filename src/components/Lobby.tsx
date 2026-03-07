@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { GameState, PlayerColor } from "@/lib/game";
 import { cn } from "@/lib/utils";
 import { getMaxPlayers, getMinPlayers, getPlayerTeam } from "@/lib/teams";
+import { getPlayerAvatar } from "@/lib/avatars";
 
 interface LobbyProps {
   state: GameState;
@@ -109,6 +110,7 @@ export function Lobby({ state, playerId, onStart, onLeave, onUpdateSequencesNeed
                     if (!p) return null;
                     return (
                       <div key={pid} className="flex items-center gap-2 text-sm">
+                        <span className="text-base">{getPlayerAvatar(pid)}</span>
                         <span className="font-medium">
                           {p.name}
                           {pid === playerId && (
@@ -146,6 +148,8 @@ export function Lobby({ state, playerId, onStart, onLeave, onUpdateSequencesNeed
                   key={pid}
                   className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg"
                 >
+                  {/* Avatar */}
+                  <span className="text-xl">{getPlayerAvatar(pid)}</span>
                   {/* Color picker for current player, static dot for others */}
                   {isMe ? (
                     <div className="flex gap-1.5">

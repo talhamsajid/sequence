@@ -46,13 +46,25 @@ interface IceCandidateData {
   sdpMLineIndex: number | null;
 }
 
+export interface PeerAudioState {
+  peerId: string;
+  speaking: boolean;
+  volume: number; // 0-1
+  muted: boolean;
+}
+
 export interface VoiceManager {
   join(roomId: string, peerId: string): Promise<void>;
   leave(): void;
   toggleMute(): boolean;
   isMuted(): boolean;
+  setPeerVolume(peerId: string, volume: number): void;
+  setPeerMuted(peerId: string, muted: boolean): void;
+  getPeerAudioStates(): Map<string, PeerAudioState>;
+  isLocalSpeaking(): boolean;
   onPeerConnected: (callback: (peerId: string) => void) => void;
   onPeerDisconnected: (callback: (peerId: string) => void) => void;
+  onSpeakingChange: (callback: (states: Map<string, PeerAudioState>, localSpeaking: boolean) => void) => void;
 }
 
 // ── Constants ────────────────────────────────────────────────────────
@@ -63,6 +75,18 @@ const ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.relay.metered.ca:80" },
 ];
 
+const SPEAKING_THRESHOLD = 15; // RMS threshold for "speaking"
+const SPEAKING_POLL_MS = 100;
+
+// ── Audio node bundle per peer ───────────────────────────────────────
+
+interface PeerAudioNodes {
+  source: MediaStreamAudioSourceNode;
+  gain: GainNode;
+  analyser: AnalyserNode;
+  audioElement: HTMLAudioElement;
+}
+
 // ── Factory ──────────────────────────────────────────────────────────
 
 export function createVoiceManager(): VoiceManager {
@@ -71,17 +95,147 @@ export function createVoiceManager(): VoiceManager {
   let currentRoomId: string | null = null;
   let currentPeerId: string | null = null;
 
+  // Audio context for processing
+  let audioCtx: AudioContext | null = null;
+  let localAnalyser: AnalyserNode | null = null;
+  let localSpeaking = false;
+
   // Peer connections keyed by remote peerId
   const connections = new Map<string, RTCPeerConnection>();
+  // Audio processing nodes per peer
+  const peerAudio = new Map<string, PeerAudioNodes>();
+  // Peer audio states (volume, muted, speaking)
+  const peerStates = new Map<string, PeerAudioState>();
+
   // Firebase unsubscribes to clean up on leave
   const unsubscribes: Unsubscribe[] = [];
-  // Refs to clean up via off()
   const firebaseRefs: ReturnType<typeof ref>[] = [];
 
   let peerConnectedCb: ((peerId: string) => void) | null = null;
   let peerDisconnectedCb: ((peerId: string) => void) | null = null;
+  let speakingChangeCb: ((states: Map<string, PeerAudioState>, localSpeaking: boolean) => void) | null = null;
 
-  // ── Helpers ──────────────────────────────────────────────────────
+  let speakingInterval: ReturnType<typeof setInterval> | null = null;
+
+  // ── Audio helpers ──────────────────────────────────────────────────
+
+  function getAudioContext(): AudioContext {
+    if (!audioCtx) {
+      audioCtx = new AudioContext();
+    }
+    if (audioCtx.state === "suspended") {
+      audioCtx.resume();
+    }
+    return audioCtx;
+  }
+
+  function setupLocalAnalyser(stream: MediaStream) {
+    const ctx = getAudioContext();
+    const source = ctx.createMediaStreamSource(stream);
+    localAnalyser = ctx.createAnalyser();
+    localAnalyser.fftSize = 256;
+    source.connect(localAnalyser);
+  }
+
+  function setupPeerAudio(peerId: string, stream: MediaStream) {
+    const ctx = getAudioContext();
+    const source = ctx.createMediaStreamSource(stream);
+    const gain = ctx.createGain();
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 256;
+
+    source.connect(analyser);
+    source.connect(gain);
+    gain.connect(ctx.destination);
+
+    // Also play via audio element for reliable playback
+    const audioElement = new Audio();
+    audioElement.srcObject = stream;
+    audioElement.autoplay = true;
+    // Mute the element since we're routing through Web Audio API
+    audioElement.volume = 0;
+
+    const existing = peerStates.get(peerId);
+    const vol = existing?.volume ?? 1;
+    const mut = existing?.muted ?? false;
+    gain.gain.value = mut ? 0 : vol;
+
+    peerAudio.set(peerId, { source, gain, analyser, audioElement });
+
+    if (!peerStates.has(peerId)) {
+      peerStates.set(peerId, { peerId, speaking: false, volume: 1, muted: false });
+    }
+  }
+
+  function cleanupPeerAudio(peerId: string) {
+    const nodes = peerAudio.get(peerId);
+    if (nodes) {
+      nodes.audioElement.srcObject = null;
+      nodes.audioElement.pause();
+      nodes.source.disconnect();
+      nodes.gain.disconnect();
+      peerAudio.delete(peerId);
+    }
+    peerStates.delete(peerId);
+  }
+
+  function getRMS(analyser: AnalyserNode): number {
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteTimeDomainData(data);
+    let sum = 0;
+    for (let i = 0; i < data.length; i++) {
+      const v = (data[i] - 128) / 128;
+      sum += v * v;
+    }
+    return Math.sqrt(sum / data.length) * 100;
+  }
+
+  function startSpeakingDetection() {
+    if (speakingInterval) return;
+
+    speakingInterval = setInterval(() => {
+      let changed = false;
+
+      // Local speaking
+      if (localAnalyser && !muted) {
+        const rms = getRMS(localAnalyser);
+        const wasSpeaking = localSpeaking;
+        localSpeaking = rms > SPEAKING_THRESHOLD;
+        if (wasSpeaking !== localSpeaking) changed = true;
+      } else if (localSpeaking) {
+        localSpeaking = false;
+        changed = true;
+      }
+
+      // Peer speaking
+      for (const [peerId, nodes] of peerAudio) {
+        const state = peerStates.get(peerId);
+        if (!state) continue;
+
+        const rms = getRMS(nodes.analyser);
+        const wasSpeaking = state.speaking;
+        const nowSpeaking = rms > SPEAKING_THRESHOLD && !state.muted;
+
+        if (wasSpeaking !== nowSpeaking) {
+          peerStates.set(peerId, { ...state, speaking: nowSpeaking });
+          changed = true;
+        }
+      }
+
+      if (changed) {
+        speakingChangeCb?.(new Map(peerStates), localSpeaking);
+      }
+    }, SPEAKING_POLL_MS);
+  }
+
+  function stopSpeakingDetection() {
+    if (speakingInterval) {
+      clearInterval(speakingInterval);
+      speakingInterval = null;
+    }
+  }
+
+  // ── Signaling helpers ──────────────────────────────────────────────
 
   function voiceRef(roomId: string) {
     return ref(getDb(), `games/${roomId}/voice`);
@@ -99,12 +253,10 @@ export function createVoiceManager(): VoiceManager {
   ): RTCPeerConnection {
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
 
-    // Add local tracks
     for (const track of stream.getTracks()) {
       pc.addTrack(track, stream);
     }
 
-    // ICE candidate handling — write to Firebase
     pc.onicecandidate = (event) => {
       if (event.candidate) {
         const iceRef = ref(
@@ -120,16 +272,13 @@ export function createVoiceManager(): VoiceManager {
       }
     };
 
-    // Play remote audio
     pc.ontrack = (event) => {
-      const audio = new Audio();
-      audio.srcObject = event.streams[0];
-      audio.autoplay = true;
-      // Store reference for cleanup
-      (pc as unknown as Record<string, HTMLAudioElement>).__audio = audio;
+      const remoteStream = event.streams[0];
+      if (remoteStream) {
+        setupPeerAudio(remoteId, remoteStream);
+      }
     };
 
-    // Connection state monitoring
     pc.oniceconnectionstatechange = () => {
       const state = pc.iceConnectionState;
       if (state === "connected" || state === "completed") {
@@ -151,18 +300,12 @@ export function createVoiceManager(): VoiceManager {
   function cleanupPeer(remoteId: string) {
     const pc = connections.get(remoteId);
     if (pc) {
-      const audio = (pc as unknown as Record<string, HTMLAudioElement>)
-        .__audio;
-      if (audio) {
-        audio.srcObject = null;
-        audio.pause();
-      }
       pc.close();
       connections.delete(remoteId);
     }
+    cleanupPeerAudio(remoteId);
   }
 
-  // Listen for ICE candidates from a remote peer
   function listenForIceCandidates(
     roomId: string,
     localId: string,
@@ -184,15 +327,13 @@ export function createVoiceManager(): VoiceManager {
             sdpMid: data.sdpMid ?? undefined,
             sdpMLineIndex: data.sdpMLineIndex ?? undefined,
           }),
-        ).catch(() => {
-          /* ICE candidate may arrive after connection closed */
-        });
+        ).catch(() => {});
       }
     });
     unsubscribes.push(unsub);
   }
 
-  // ── Public API ───────────────────────────────────────────────────
+  // ── Public API ─────────────────────────────────────────────────────
 
   async function join(roomId: string, peerId: string): Promise<void> {
     if (currentRoomId) {
@@ -202,22 +343,20 @@ export function createVoiceManager(): VoiceManager {
     currentRoomId = roomId;
     currentPeerId = peerId;
 
-    // Get microphone
     localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-    // Apply current mute state
     for (const track of localStream.getAudioTracks()) {
       track.enabled = !muted;
     }
 
-    // Announce ourselves
+    // Setup local analyser for speaking detection
+    setupLocalAnalyser(localStream);
+    startSpeakingDetection();
+
     await set(peerRef(roomId, peerId), { joined: true });
 
     // Listen for offers FROM other peers TO us
-    const offersRef = ref(
-      getDb(),
-      `games/${roomId}/voice/${peerId}/offers`,
-    );
+    const offersRef = ref(getDb(), `games/${roomId}/voice/${peerId}/offers`);
     firebaseRefs.push(offersRef);
 
     const offersUnsub = onChildAdded(offersRef, async (snapshot) => {
@@ -226,8 +365,6 @@ export function createVoiceManager(): VoiceManager {
 
       const offerData = snapshot.val() as SignalData;
       if (!offerData?.sdp) return;
-
-      // Don't create duplicate connections
       if (connections.has(remotePeerId)) return;
 
       const pc = createPeerConnection(roomId, peerId, remotePeerId, localStream);
@@ -240,18 +377,12 @@ export function createVoiceManager(): VoiceManager {
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
 
-        // Write answer
         const answerRef = ref(
           getDb(),
           `games/${roomId}/voice/${peerId}/answers/${remotePeerId}`,
         );
-        const answerData: SignalData = {
-          sdp: answer.sdp ?? "",
-          type: answer.type,
-        };
-        await set(answerRef, answerData);
+        await set(answerRef, { sdp: answer.sdp ?? "", type: answer.type });
 
-        // Listen for ICE from this peer
         listenForIceCandidates(roomId, peerId, remotePeerId, pc);
       } catch {
         cleanupPeer(remotePeerId);
@@ -259,18 +390,14 @@ export function createVoiceManager(): VoiceManager {
     });
     unsubscribes.push(offersUnsub);
 
-    // Watch for new peers joining — if we see them, we create offers TO them
+    // Watch for new peers — create offers TO them
     const voiceRootRef = voiceRef(roomId);
     firebaseRefs.push(voiceRootRef);
 
     const peerJoinUnsub = onChildAdded(voiceRootRef, async (snapshot) => {
       const remotePeerId = snapshot.key;
       if (!remotePeerId || remotePeerId === peerId || !localStream) return;
-
-      // Only the peer with the "smaller" ID creates the offer to avoid duplicates
       if (peerId >= remotePeerId) return;
-
-      // Don't create duplicate connections
       if (connections.has(remotePeerId)) return;
 
       const pc = createPeerConnection(roomId, peerId, remotePeerId, localStream);
@@ -279,18 +406,12 @@ export function createVoiceManager(): VoiceManager {
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
 
-        // Write offer to the REMOTE peer's offers path
         const offerRef = ref(
           getDb(),
           `games/${roomId}/voice/${remotePeerId}/offers/${peerId}`,
         );
-        const offerData: SignalData = {
-          sdp: offer.sdp ?? "",
-          type: offer.type,
-        };
-        await set(offerRef, offerData);
+        await set(offerRef, { sdp: offer.sdp ?? "", type: offer.type });
 
-        // Listen for answer from remote peer
         const answerRef = ref(
           getDb(),
           `games/${roomId}/voice/${remotePeerId}/answers/${peerId}`,
@@ -304,18 +425,12 @@ export function createVoiceManager(): VoiceManager {
 
           try {
             await pc.setRemoteDescription(
-              new RTCSessionDescription({
-                sdp: answerData.sdp,
-                type: answerData.type,
-              }),
+              new RTCSessionDescription({ sdp: answerData.sdp, type: answerData.type }),
             );
-          } catch {
-            /* Remote description may already be set */
-          }
+          } catch {}
         });
         unsubscribes.push(answerUnsub);
 
-        // Listen for ICE from this peer
         listenForIceCandidates(roomId, peerId, remotePeerId, pc);
       } catch {
         cleanupPeer(remotePeerId);
@@ -323,7 +438,6 @@ export function createVoiceManager(): VoiceManager {
     });
     unsubscribes.push(peerJoinUnsub);
 
-    // Watch for peers leaving
     const peerLeaveUnsub = onChildRemoved(voiceRootRef, (snapshot) => {
       const remotePeerId = snapshot.key;
       if (remotePeerId && remotePeerId !== peerId) {
@@ -335,37 +449,34 @@ export function createVoiceManager(): VoiceManager {
   }
 
   function leave(): void {
-    // Unsubscribe all Firebase listeners
-    for (const unsub of unsubscribes) {
-      unsub();
-    }
+    stopSpeakingDetection();
+
+    for (const unsub of unsubscribes) unsub();
     unsubscribes.length = 0;
 
-    // Detach any remaining off() refs
-    for (const r of firebaseRefs) {
-      off(r);
-    }
+    for (const r of firebaseRefs) off(r);
     firebaseRefs.length = 0;
 
-    // Close all peer connections
-    for (const [remoteId] of connections) {
-      cleanupPeer(remoteId);
-    }
+    for (const [remoteId] of connections) cleanupPeer(remoteId);
     connections.clear();
+    peerAudio.clear();
+    peerStates.clear();
 
-    // Stop local stream
     if (localStream) {
-      for (const track of localStream.getTracks()) {
-        track.stop();
-      }
+      for (const track of localStream.getTracks()) track.stop();
       localStream = null;
     }
 
-    // Remove our presence from Firebase
+    localAnalyser = null;
+    localSpeaking = false;
+
+    if (audioCtx) {
+      audioCtx.close().catch(() => {});
+      audioCtx = null;
+    }
+
     if (currentRoomId && currentPeerId) {
-      remove(peerRef(currentRoomId, currentPeerId)).catch(() => {
-        /* best-effort cleanup */
-      });
+      remove(peerRef(currentRoomId, currentPeerId)).catch(() => {});
     }
 
     currentRoomId = null;
@@ -379,6 +490,10 @@ export function createVoiceManager(): VoiceManager {
         track.enabled = !muted;
       }
     }
+    if (muted) {
+      localSpeaking = false;
+      speakingChangeCb?.(new Map(peerStates), false);
+    }
     return muted;
   }
 
@@ -386,16 +501,43 @@ export function createVoiceManager(): VoiceManager {
     return muted;
   }
 
+  function setPeerVolume(peerId: string, volume: number): void {
+    const clamped = Math.max(0, Math.min(1, volume));
+    const nodes = peerAudio.get(peerId);
+    const state = peerStates.get(peerId);
+
+    if (state) {
+      peerStates.set(peerId, { ...state, volume: clamped });
+    }
+    if (nodes && state && !state.muted) {
+      nodes.gain.gain.value = clamped;
+    }
+  }
+
+  function setPeerMuted(peerId: string, isMuted: boolean): void {
+    const nodes = peerAudio.get(peerId);
+    const state = peerStates.get(peerId);
+
+    if (state) {
+      peerStates.set(peerId, { ...state, muted: isMuted, speaking: false });
+    }
+    if (nodes) {
+      nodes.gain.gain.value = isMuted ? 0 : (state?.volume ?? 1);
+    }
+    speakingChangeCb?.(new Map(peerStates), localSpeaking);
+  }
+
   return {
     join,
     leave,
     toggleMute,
     isMuted: isMutedFn,
-    onPeerConnected: (cb) => {
-      peerConnectedCb = cb;
-    },
-    onPeerDisconnected: (cb) => {
-      peerDisconnectedCb = cb;
-    },
+    setPeerVolume,
+    setPeerMuted,
+    getPeerAudioStates: () => new Map(peerStates),
+    isLocalSpeaking: () => localSpeaking,
+    onPeerConnected: (cb) => { peerConnectedCb = cb; },
+    onPeerDisconnected: (cb) => { peerDisconnectedCb = cb; },
+    onSpeakingChange: (cb) => { speakingChangeCb = cb; },
   };
 }

@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { createVoiceManager, type VoiceManager } from "@/lib/voice";
+import { createVoiceManager, type VoiceManager, type PeerAudioState } from "@/lib/voice";
+import { getPlayerAvatar } from "@/lib/avatars";
+import type { Player, PlayerColor } from "@/lib/game";
+import { cn } from "@/lib/utils";
 
 type VoiceState = "disconnected" | "connecting" | "connected" | "muted";
 
@@ -10,7 +13,14 @@ interface VoiceChatProps {
   playerId: string;
   playerName: string;
   playerColor: string;
+  players: Record<string, Player>;
 }
+
+const COLOR_RING: Record<string, string> = {
+  red: "ring-red-400",
+  blue: "ring-blue-400",
+  green: "ring-green-400",
+};
 
 const COLOR_BG: Record<string, string> = {
   red: "bg-red-500",
@@ -18,15 +28,21 @@ const COLOR_BG: Record<string, string> = {
   green: "bg-green-500",
 };
 
-export function VoiceChat({ roomId, playerId }: VoiceChatProps) {
+const COLOR_GLOW: Record<string, string> = {
+  red: "shadow-[0_0_12px_rgba(239,68,68,0.7)]",
+  blue: "shadow-[0_0_12px_rgba(59,130,246,0.7)]",
+  green: "shadow-[0_0_12px_rgba(34,197,94,0.7)]",
+};
+
+export function VoiceChat({ roomId, playerId, playerName, playerColor, players }: VoiceChatProps) {
   const [voiceState, setVoiceState] = useState<VoiceState>("disconnected");
-  const [connectedPeers, setConnectedPeers] = useState<Set<string>>(
-    () => new Set(),
-  );
+  const [connectedPeers, setConnectedPeers] = useState<Set<string>>(() => new Set());
+  const [peerStates, setPeerStates] = useState<Map<string, PeerAudioState>>(() => new Map());
+  const [localSpeaking, setLocalSpeaking] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const managerRef = useRef<VoiceManager | null>(null);
 
-  // Initialize manager once
   useEffect(() => {
     const manager = createVoiceManager();
     managerRef.current = manager;
@@ -43,18 +59,23 @@ export function VoiceChat({ roomId, playerId }: VoiceChatProps) {
       });
     });
 
+    manager.onSpeakingChange((states, speaking) => {
+      setPeerStates(new Map(states));
+      setLocalSpeaking(speaking);
+    });
+
     return () => {
       manager.leave();
       managerRef.current = null;
     };
   }, []);
 
-  // Disconnect on unmount or roomId change
   useEffect(() => {
     return () => {
       managerRef.current?.leave();
       setVoiceState("disconnected");
       setConnectedPeers(new Set());
+      setPeerStates(new Map());
     };
   }, [roomId]);
 
@@ -68,6 +89,7 @@ export function VoiceChat({ roomId, playerId }: VoiceChatProps) {
     try {
       await manager.join(roomId, playerId);
       setVoiceState("connected");
+      setPanelOpen(true);
     } catch (err) {
       const message =
         err instanceof DOMException && err.name === "NotAllowedError"
@@ -75,8 +97,6 @@ export function VoiceChat({ roomId, playerId }: VoiceChatProps) {
           : "Failed to join voice chat";
       setError(message);
       setVoiceState("disconnected");
-
-      // Auto-dismiss error
       setTimeout(() => setError(null), 3000);
     }
   }, [roomId, playerId]);
@@ -84,7 +104,6 @@ export function VoiceChat({ roomId, playerId }: VoiceChatProps) {
   const handleToggleMute = useCallback(() => {
     const manager = managerRef.current;
     if (!manager) return;
-
     const nowMuted = manager.toggleMute();
     setVoiceState(nowMuted ? "muted" : "connected");
   }, []);
@@ -101,19 +120,42 @@ export function VoiceChat({ roomId, playerId }: VoiceChatProps) {
     managerRef.current?.leave();
     setVoiceState("disconnected");
     setConnectedPeers(new Set());
+    setPeerStates(new Map());
+    setLocalSpeaking(false);
+    setPanelOpen(false);
   }, []);
 
-  // Button styling based on state
+  const handlePeerVolume = useCallback((peerId: string, volume: number) => {
+    managerRef.current?.setPeerVolume(peerId, volume);
+    setPeerStates((prev) => {
+      const next = new Map(prev);
+      const state = next.get(peerId);
+      if (state) next.set(peerId, { ...state, volume });
+      return next;
+    });
+  }, []);
+
+  const handlePeerMute = useCallback((peerId: string) => {
+    const state = peerStates.get(peerId);
+    if (!state) return;
+    const newMuted = !state.muted;
+    managerRef.current?.setPeerMuted(peerId, newMuted);
+    setPeerStates((prev) => {
+      const next = new Map(prev);
+      const s = next.get(peerId);
+      if (s) next.set(peerId, { ...s, muted: newMuted });
+      return next;
+    });
+  }, [peerStates]);
+
+  const isActive = voiceState !== "disconnected";
+
   const buttonClass = (() => {
     switch (voiceState) {
-      case "disconnected":
-        return "bg-gray-600 hover:bg-gray-500";
-      case "connecting":
-        return "bg-amber-600 animate-pulse";
-      case "connected":
-        return "bg-emerald-600 hover:bg-emerald-500";
-      case "muted":
-        return "bg-red-600 hover:bg-red-500";
+      case "disconnected": return "bg-gray-600 hover:bg-gray-500";
+      case "connecting": return "bg-amber-600 animate-pulse";
+      case "connected": return "bg-emerald-600 hover:bg-emerald-500";
+      case "muted": return "bg-red-600 hover:bg-red-500";
     }
   })();
 
@@ -126,54 +168,85 @@ export function VoiceChat({ roomId, playerId }: VoiceChatProps) {
         </div>
       )}
 
-      {/* Connected peers indicator */}
-      {connectedPeers.size > 0 && voiceState !== "disconnected" && (
-        <div className="fixed bottom-[84px] left-4 z-40 flex gap-1">
-          {Array.from(connectedPeers).map((peerId) => (
-            <div
-              key={peerId}
-              className={[
-                "w-2.5 h-2.5 rounded-full border border-white/30",
-                COLOR_BG[peerId] ?? "bg-white/60",
-              ].join(" ")}
-              title={`Peer: ${peerId.slice(0, 6)}`}
+      {/* Voice panel */}
+      {isActive && panelOpen && (
+        <div className="fixed bottom-20 left-4 z-40 w-56 bg-black/80 backdrop-blur-md rounded-xl border border-white/10 shadow-2xl overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
+            <span className="text-xs font-semibold text-white/80 uppercase tracking-wider">
+              Voice Chat
+            </span>
+            <button
+              onClick={() => setPanelOpen(false)}
+              className="text-white/40 hover:text-white/80 transition-colors"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Participants */}
+          <div className="p-2 space-y-1 max-h-60 overflow-y-auto">
+            {/* Local player */}
+            <VoiceParticipant
+              name={playerName}
+              color={playerColor}
+              avatar={getPlayerAvatar(playerId)}
+              speaking={localSpeaking && voiceState === "connected"}
+              isSelf
+              muted={voiceState === "muted"}
+              onToggleMute={handleToggleMute}
             />
-          ))}
+
+            {/* Remote peers */}
+            {Array.from(connectedPeers).map((peerId) => {
+              const player = players[peerId];
+              const state = peerStates.get(peerId);
+              return (
+                <VoiceParticipant
+                  key={peerId}
+                  name={player?.name ?? peerId.slice(0, 8)}
+                  color={player?.color ?? "blue"}
+                  avatar={getPlayerAvatar(peerId)}
+                  speaking={state?.speaking ?? false}
+                  muted={state?.muted ?? false}
+                  volume={state?.volume ?? 1}
+                  onToggleMute={() => handlePeerMute(peerId)}
+                  onVolumeChange={(v) => handlePeerVolume(peerId, v)}
+                />
+              );
+            })}
+
+            {connectedPeers.size === 0 && (
+              <p className="text-xs text-white/30 text-center py-2">
+                Waiting for others to join...
+              </p>
+            )}
+          </div>
+
+          {/* Disconnect */}
+          <div className="px-2 pb-2">
+            <button
+              onClick={handleDisconnect}
+              className="w-full py-1.5 text-xs font-medium text-red-300 bg-red-500/15 hover:bg-red-500/25 rounded-lg transition-colors"
+            >
+              Disconnect
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Main button */}
-      <div className="fixed bottom-20 left-4 z-40 flex flex-col items-center gap-1">
-        {/* Disconnect button (small, shown when connected) */}
-        {(voiceState === "connected" || voiceState === "muted") && (
-          <button
-            onClick={handleDisconnect}
-            className="w-6 h-6 bg-red-600/80 hover:bg-red-500 text-white rounded-full flex items-center justify-center transition-all active:scale-95 shadow"
-            aria-label="Disconnect voice"
-          >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        )}
-
-        {/* Mic button */}
+      {/* Floating button area */}
+      <div className="fixed bottom-20 left-4 z-40 flex items-center gap-2">
+        {/* Main mic button */}
         <button
           onClick={handleClick}
-          className={[
-            "w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition-all active:scale-95",
+          className={cn(
+            "w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition-all active:scale-95 relative",
             buttonClass,
-          ].join(" ")}
+            localSpeaking && voiceState === "connected" && COLOR_GLOW[playerColor],
+          )}
           aria-label={
             voiceState === "disconnected"
               ? "Join voice chat"
@@ -182,16 +255,160 @@ export function VoiceChat({ roomId, playerId }: VoiceChatProps) {
                 : "Mute"
           }
         >
-          {voiceState === "disconnected" || voiceState === "muted" ? (
+          {/* Avatar overlay */}
+          <span className="absolute -top-1 -right-1 text-sm select-none">
+            {getPlayerAvatar(playerId)}
+          </span>
+          {voiceState === "muted" || voiceState === "disconnected" ? (
             <MicOffIcon />
-          ) : voiceState === "connecting" ? (
-            <MicIcon />
           ) : (
             <MicIcon />
           )}
         </button>
+
+        {/* Expand panel button (when connected but panel closed) */}
+        {isActive && !panelOpen && (
+          <button
+            onClick={() => setPanelOpen(true)}
+            className="h-8 px-2 bg-black/60 backdrop-blur-sm rounded-full flex items-center gap-1.5 text-white/70 hover:text-white/90 transition-colors border border-white/10"
+          >
+            {/* Peer avatars */}
+            {Array.from(connectedPeers).slice(0, 3).map((peerId) => {
+              const state = peerStates.get(peerId);
+              const color = players[peerId]?.color ?? "blue";
+              return (
+                <span
+                  key={peerId}
+                  className={cn(
+                    "text-sm transition-all",
+                    state?.speaking && COLOR_GLOW[color],
+                  )}
+                >
+                  {getPlayerAvatar(peerId)}
+                </span>
+              );
+            })}
+            {connectedPeers.size === 0 && (
+              <span className="text-xs">...</span>
+            )}
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="18 15 12 9 6 15" />
+            </svg>
+          </button>
+        )}
       </div>
     </>
+  );
+}
+
+// ── Participant Row ──────────────────────────────────────────────────
+
+interface VoiceParticipantProps {
+  name: string;
+  color: string;
+  avatar: string;
+  speaking: boolean;
+  muted: boolean;
+  isSelf?: boolean;
+  volume?: number;
+  onToggleMute: () => void;
+  onVolumeChange?: (v: number) => void;
+}
+
+function VoiceParticipant({
+  name,
+  color,
+  avatar,
+  speaking,
+  muted,
+  isSelf,
+  volume,
+  onToggleMute,
+  onVolumeChange,
+}: VoiceParticipantProps) {
+  const [showSlider, setShowSlider] = useState(false);
+  const pColor = color as PlayerColor;
+
+  return (
+    <div className="group">
+      <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white/5 transition-colors">
+        {/* Avatar with speaking ring */}
+        <div className="relative shrink-0">
+          <div
+            className={cn(
+              "w-8 h-8 rounded-full flex items-center justify-center text-base transition-all",
+              "bg-white/10",
+              speaking && "ring-2",
+              speaking && (COLOR_RING[pColor] ?? "ring-white/60"),
+              speaking && (COLOR_GLOW[pColor] ?? ""),
+            )}
+          >
+            {avatar}
+          </div>
+          {/* Speaking pulse dot */}
+          {speaking && (
+            <div className={cn(
+              "absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full animate-pulse border border-black/40",
+              COLOR_BG[pColor] ?? "bg-white",
+            )} />
+          )}
+        </div>
+
+        {/* Name */}
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-medium text-white/90 truncate">
+            {name}
+            {isSelf && <span className="text-white/40 ml-1">(you)</span>}
+          </p>
+          {muted && (
+            <p className="text-[10px] text-red-400/70">Muted</p>
+          )}
+        </div>
+
+        {/* Controls */}
+        <div className="flex items-center gap-1 shrink-0">
+          {/* Volume toggle (for remote peers) */}
+          {!isSelf && onVolumeChange && (
+            <button
+              onClick={() => setShowSlider(!showSlider)}
+              className="w-6 h-6 flex items-center justify-center text-white/40 hover:text-white/80 transition-colors rounded"
+              title="Adjust volume"
+            >
+              <SpeakerIcon size={12} muted={muted} volume={volume ?? 1} />
+            </button>
+          )}
+          {/* Mute button */}
+          <button
+            onClick={onToggleMute}
+            className={cn(
+              "w-6 h-6 flex items-center justify-center rounded transition-colors",
+              muted
+                ? "text-red-400 hover:text-red-300 bg-red-500/10"
+                : "text-white/40 hover:text-white/80",
+            )}
+            title={muted ? "Unmute" : "Mute"}
+          >
+            {muted ? <MicOffIconSmall /> : <MicIconSmall />}
+          </button>
+        </div>
+      </div>
+
+      {/* Volume slider (for remote peers) */}
+      {!isSelf && showSlider && onVolumeChange && (
+        <div className="px-3 pb-1.5 flex items-center gap-2">
+          <SpeakerIcon size={10} muted={false} volume={0} />
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={Math.round((volume ?? 1) * 100)}
+            onChange={(e) => onVolumeChange(Number(e.target.value) / 100)}
+            className="flex-1 h-1 accent-emerald-500 cursor-pointer"
+          />
+          <SpeakerIcon size={10} muted={false} volume={1} />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -199,17 +416,7 @@ export function VoiceChat({ roomId, playerId }: VoiceChatProps) {
 
 function MicIcon() {
   return (
-    <svg
-      width="22"
-      height="22"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="text-white"
-    >
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white">
       <rect x="9" y="1" width="6" height="12" rx="3" />
       <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
       <line x1="12" y1="18" x2="12" y2="23" />
@@ -220,23 +427,52 @@ function MicIcon() {
 
 function MicOffIcon() {
   return (
-    <svg
-      width="22"
-      height="22"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="text-white"
-    >
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white">
       <rect x="9" y="1" width="6" height="12" rx="3" />
       <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
       <line x1="12" y1="18" x2="12" y2="23" />
       <line x1="8" y1="23" x2="16" y2="23" />
-      {/* Slash line */}
       <line x1="2" y1="2" x2="22" y2="22" />
+    </svg>
+  );
+}
+
+function MicIconSmall() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="1" width="6" height="12" rx="3" />
+      <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
+    </svg>
+  );
+}
+
+function MicOffIconSmall() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="1" width="6" height="12" rx="3" />
+      <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
+      <line x1="2" y1="2" x2="22" y2="22" />
+    </svg>
+  );
+}
+
+function SpeakerIcon({ size, muted, volume }: { size: number; muted: boolean; volume: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+      {muted ? (
+        <>
+          <line x1="23" y1="9" x2="17" y2="15" />
+          <line x1="17" y1="9" x2="23" y2="15" />
+        </>
+      ) : volume > 0.5 ? (
+        <>
+          <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+          <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+        </>
+      ) : volume > 0 ? (
+        <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+      ) : null}
     </svg>
   );
 }

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import type { GameState, PlayerColor } from "@/lib/game";
 import { cn } from "@/lib/utils";
 import { getPlayerTeam } from "@/lib/teams";
+import { getPlayerAvatar } from "@/lib/avatars";
 
 interface GameStatusProps {
   state: GameState;
@@ -127,6 +128,9 @@ export function GameStatus({ state, playerId, soundOn = true, onToggleSound }: G
                 )}
               >
                 <div className={cn("w-2.5 h-2.5 rounded-full", colorDot[team.color])} />
+                <span className="text-sm mr-0.5">
+                  {team.playerIds.map((pid) => getPlayerAvatar(pid)).join("")}
+                </span>
                 <span className={cn(colorText[team.color])}>
                   {team.playerIds.includes(playerId) ? `${team.name} (You)` : team.name}
                 </span>
@@ -147,6 +151,7 @@ export function GameStatus({ state, playerId, soundOn = true, onToggleSound }: G
                   isCurrent && "bg-gray-100 ring-2 ring-gray-300"
                 )}
               >
+                <span className="text-sm mr-0.5">{getPlayerAvatar(pid)}</span>
                 <div className={cn("w-2.5 h-2.5 rounded-full", colorDot[p.color])} />
                 <span className={cn(colorText[p.color])}>
                   {pid === playerId ? "You" : p.name}

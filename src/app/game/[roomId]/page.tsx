@@ -440,6 +440,7 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
           playerId={playerId}
           playerName={player.name}
           playerColor={player.color}
+          players={state.players}
         />
       )}
     </div>
