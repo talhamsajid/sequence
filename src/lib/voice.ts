@@ -234,11 +234,11 @@ export function createVoiceManager(): VoiceManager {
   // ── Signaling helpers ──────────────────────────────────────────────
 
   function voiceRef(roomId: string) {
-    return ref(getDb(), `games/${roomId}/voice`);
+    return ref(getDb(), `voice/${roomId}`);
   }
 
   function peerRef(roomId: string, peerId: string) {
-    return ref(getDb(), `games/${roomId}/voice/${peerId}`);
+    return ref(getDb(), `voice/${roomId}/${peerId}`);
   }
 
   function createPeerConnection(
@@ -259,7 +259,7 @@ export function createVoiceManager(): VoiceManager {
       if (event.candidate) {
         const iceRef = ref(
           getDb(),
-          `games/${roomId}/voice/${localId}/ice/${remoteId}`,
+          `voice/${roomId}/${localId}/ice/${remoteId}`,
         );
         push(iceRef, {
           candidate: event.candidate.candidate,
@@ -307,7 +307,7 @@ export function createVoiceManager(): VoiceManager {
   ) {
     const iceRef = ref(
       getDb(),
-      `games/${roomId}/voice/${remoteId}/ice/${localId}`,
+      `voice/${roomId}/${remoteId}/ice/${localId}`,
     );
     firebaseRefs.push(iceRef);
 
@@ -345,7 +345,7 @@ export function createVoiceManager(): VoiceManager {
     await set(peerRef(roomId, peerId), { joined: true });
 
     // Listen for offers FROM other peers TO us
-    const offersRef = ref(getDb(), `games/${roomId}/voice/${peerId}/offers`);
+    const offersRef = ref(getDb(), `voice/${roomId}/${peerId}/offers`);
     firebaseRefs.push(offersRef);
 
     const offersUnsub = onChildAdded(offersRef, async (snapshot) => {
@@ -368,7 +368,7 @@ export function createVoiceManager(): VoiceManager {
 
         const answerRef = ref(
           getDb(),
-          `games/${roomId}/voice/${peerId}/answers/${remotePeerId}`,
+          `voice/${roomId}/${peerId}/answers/${remotePeerId}`,
         );
         await set(answerRef, { sdp: answer.sdp ?? "", type: answer.type });
 
@@ -397,13 +397,13 @@ export function createVoiceManager(): VoiceManager {
 
         const offerRef = ref(
           getDb(),
-          `games/${roomId}/voice/${remotePeerId}/offers/${peerId}`,
+          `voice/${roomId}/${remotePeerId}/offers/${peerId}`,
         );
         await set(offerRef, { sdp: offer.sdp ?? "", type: offer.type });
 
         const answerRef = ref(
           getDb(),
-          `games/${roomId}/voice/${remotePeerId}/answers/${peerId}`,
+          `voice/${roomId}/${remotePeerId}/answers/${peerId}`,
         );
         firebaseRefs.push(answerRef);
 

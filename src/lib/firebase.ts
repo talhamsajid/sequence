@@ -137,5 +137,10 @@ export function subscribeToRoom(
 }
 
 export async function deleteRoom(roomId: string): Promise<void> {
-  await remove(gameRef(roomId));
+  const db = getDb();
+  await Promise.all([
+    remove(gameRef(roomId)),
+    remove(ref(db, `voice/${roomId}`)),
+    remove(ref(db, `chat/${roomId}`)),
+  ]);
 }

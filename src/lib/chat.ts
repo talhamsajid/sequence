@@ -37,7 +37,7 @@ function getDb(): Database {
 }
 
 function chatRef(roomId: string) {
-  return ref(getDb(), `games/${roomId}/chat`);
+  return ref(getDb(), `chat/${roomId}`);
 }
 
 export async function sendMessage(

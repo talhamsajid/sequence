@@ -1,0 +1,22 @@
+{
+  "rules": {
+    "games": {
+      "$roomId": {
+        ".read": true,
+        ".write": true
+      }
+    },
+    "voice": {
+      "$roomId": {
+        ".read": true,
+        ".write": true
+      }
+    },
+    "chat": {
+      "$roomId": {
+        ".read": true,
+        ".write": true
+      }
+    }
+  }
+}
