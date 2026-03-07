@@ -98,7 +98,7 @@ export function Lobby({ state, playerId, onStart, onLeave, onUpdateSequencesNeed
                   {myTeam && myTeam.teamId !== teamId && team.playerIds.length < 2 && (
                     <button
                       onClick={() => onSwitchTeam(teamId)}
-                      className="ml-auto text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-medium hover:bg-blue-100 transition-colors active:scale-95"
+                      className="ml-auto text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-full font-medium hover:bg-blue-100 transition-colors active:scale-95"
                     >
                       Join
                     </button>
@@ -206,7 +206,7 @@ export function Lobby({ state, playerId, onStart, onLeave, onUpdateSequencesNeed
                 onClick={() => isHost && onUpdateSequencesNeeded(n)}
                 disabled={!isHost}
                 className={cn(
-                  "py-2 rounded-lg font-semibold text-sm transition-all",
+                  "py-2.5 rounded-lg font-semibold text-sm transition-all",
                   state.sequencesNeeded === n
                     ? "bg-emerald-600 text-white ring-2 ring-emerald-600"
                     : isHost

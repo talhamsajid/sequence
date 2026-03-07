@@ -131,7 +131,7 @@ export function Chat({ roomId, playerId, playerName, playerColor }: ChatProps) {
       {/* Backdrop */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black/40 z-40"
+          className="fixed inset-0 bg-black/40 z-30"
           onClick={closeChat}
         />
       )}
@@ -147,7 +147,7 @@ export function Chat({ roomId, playerId, playerName, playerColor }: ChatProps) {
         ]
           .filter(Boolean)
           .join(" ")}
-        style={{ height: "40dvh", maxHeight: "400px" }}
+        style={{ height: "40dvh", maxHeight: "320px" }}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-2 border-b border-white/10">
@@ -156,7 +156,7 @@ export function Chat({ roomId, playerId, playerName, playerColor }: ChatProps) {
           </span>
           <button
             onClick={closeChat}
-            className="w-8 h-8 flex items-center justify-center rounded-full text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+            className="w-10 h-10 flex items-center justify-center rounded-full text-white/60 hover:text-white hover:bg-white/10 transition-colors"
             aria-label="Close chat"
           >
             <svg

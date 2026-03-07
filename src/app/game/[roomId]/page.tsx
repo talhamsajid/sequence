@@ -378,7 +378,7 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
   })();
 
   return (
-    <div className="h-dvh flex flex-col bg-gradient-to-b from-emerald-900 to-emerald-950 overflow-hidden">
+    <div className="h-dvh flex flex-col bg-gradient-to-b from-emerald-900 to-emerald-950 overflow-hidden" style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
       {/* Status bar */}
       <div className="px-1.5 pt-1 sm:p-3 shrink-0">
         <GameStatus

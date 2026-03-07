@@ -99,16 +99,16 @@ function FreeCell({ cellFlipped = false }: { cellFlipped?: boolean }) {
         }}
       >
         <span
-          className="text-[5px] sm:text-[7px] font-black tracking-widest text-yellow-100"
+          className="text-[7px] sm:text-[8px] font-black tracking-widest text-yellow-100"
           style={{ textShadow: "0 1px 2px rgba(0,0,0,0.6)" }}
         >
           FREE
         </span>
       </div>
-      <span className="absolute top-[4px] left-[4px] text-[4px] sm:text-[5px] text-yellow-200 opacity-70">
+      <span className="absolute top-[4px] left-[4px] text-[5px] sm:text-[6px] text-yellow-200 opacity-70">
         ★
       </span>
-      <span className="absolute bottom-[4px] right-[4px] text-[4px] sm:text-[5px] text-yellow-200 opacity-70">
+      <span className="absolute bottom-[4px] right-[4px] text-[5px] sm:text-[6px] text-yellow-200 opacity-70">
         ★
       </span>
     </button>

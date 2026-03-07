@@ -193,17 +193,17 @@ export function GameStatus({
       )}
 
       {/* Action buttons */}
-      <div className="flex items-center gap-0.5 shrink-0">
+      <div className="flex items-center gap-0 shrink-0">
         {onToggleFlip && (
           <button
             onClick={onToggleFlip}
-            className="p-1.5 rounded-full hover:bg-white/10 transition-colors"
+            className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors"
             title={boardFlipped ? "Reset board" : "Flip board"}
           >
             <svg
               width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
               strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-              className="text-white/50"
+              className="text-white/70"
               style={{ transform: boardFlipped ? "rotate(180deg)" : "none", transition: "transform 0.3s" }}
             >
               <path d="M21 12a9 9 0 1 1-6.219-8.56" />
@@ -215,13 +215,13 @@ export function GameStatus({
         {onToggleSound && (
           <button
             onClick={onToggleSound}
-            className="p-1.5 rounded-full hover:bg-white/10 transition-colors"
+            className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors"
             title={soundOn ? "Mute" : "Unmute"}
           >
             <svg
               width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
               strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-              className="text-white/50"
+              className="text-white/70"
             >
               {soundOn ? (
                 <>
@@ -242,13 +242,13 @@ export function GameStatus({
         {onLeave && (
           <button
             onClick={onLeave}
-            className="p-1.5 rounded-full hover:bg-red-500/20 transition-colors"
+            className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-red-500/20 transition-colors"
             title="Leave game"
           >
             <svg
               width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
               strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-              className="text-white/50 hover:text-red-400 transition-colors"
+              className="text-white/70 hover:text-red-400 transition-colors"
             >
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
               <polyline points="16 17 21 12 16 7" />

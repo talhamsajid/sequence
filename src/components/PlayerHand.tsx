@@ -100,7 +100,7 @@ export function PlayerHand({ hand, selectedIndex, onSelect, isMyTurn, validCards
                   isOneEyedJack(card) ? "bg-red-600/90" : "bg-violet-600/90"
                 )}
               >
-                <span className="text-white text-[6px] sm:text-[7px] font-black tracking-widest">
+                <span className="text-white text-[7px] sm:text-[8px] font-black tracking-widest">
                   {isOneEyedJack(card) ? "REMOVE" : "WILD"}
                 </span>
               </div>

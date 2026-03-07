@@ -200,7 +200,7 @@ export default function Home() {
                       key={n}
                       onClick={() => updateTeamCount(n)}
                       className={cn(
-                        "py-2 rounded-lg font-semibold text-sm transition-all",
+                        "py-2.5 rounded-lg font-semibold text-sm transition-all",
                         teamCount === n
                           ? "bg-emerald-600 text-white ring-2 ring-emerald-600"
                           : "bg-gray-50 text-gray-600 hover:bg-gray-100"
@@ -227,7 +227,7 @@ export default function Home() {
                     key={n}
                     onClick={() => setSequencesNeeded(n)}
                     className={cn(
-                      "py-2 rounded-lg font-semibold text-sm transition-all",
+                      "py-2.5 rounded-lg font-semibold text-sm transition-all",
                       sequencesNeeded === n
                         ? "bg-emerald-600 text-white ring-2 ring-emerald-600"
                         : "bg-gray-50 text-gray-600 hover:bg-gray-100"
@@ -255,7 +255,7 @@ export default function Home() {
                 setView("home");
                 setError(null);
               }}
-              className="w-full py-2 text-sm text-gray-400 hover:text-gray-600 transition-colors"
+              className="w-full py-3 text-sm text-gray-400 hover:text-gray-600 transition-colors"
             >
               Back
             </button>
@@ -294,7 +294,7 @@ export default function Home() {
                 setView("home");
                 setError(null);
               }}
-              className="w-full py-2 text-sm text-gray-400 hover:text-gray-600 transition-colors"
+              className="w-full py-3 text-sm text-gray-400 hover:text-gray-600 transition-colors"
             >
               Back
             </button>

@@ -189,14 +189,14 @@ export function VoiceChat({ roomId, playerId, playerName, playerColor, players }
 
       {/* Voice panel */}
       {isActive && panelOpen && (
-        <div className="fixed bottom-[4.5rem] left-4 z-40 w-56 bg-black/80 backdrop-blur-md rounded-xl border border-white/10 shadow-2xl overflow-hidden">
+        <div className="fixed bottom-[4.5rem] left-4 z-[35] w-56 bg-black/80 backdrop-blur-md rounded-xl border border-white/10 shadow-2xl overflow-hidden">
           <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
             <span className="text-xs font-semibold text-white/80 uppercase tracking-wider">
               Voice Chat
             </span>
             <button
               onClick={() => setPanelOpen(false)}
-              className="text-white/40 hover:text-white/80 transition-colors"
+              className="w-8 h-8 flex items-center justify-center rounded-full text-white/40 hover:text-white/80 hover:bg-white/10 transition-colors"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="6 9 12 15 18 9" />
@@ -281,7 +281,7 @@ export function VoiceChat({ roomId, playerId, playerName, playerColor, players }
         {isActive && !panelOpen && (
           <button
             onClick={() => setPanelOpen(true)}
-            className="h-8 px-2 bg-black/60 backdrop-blur-sm rounded-full flex items-center gap-1.5 text-white/70 hover:text-white/90 transition-colors border border-white/10"
+            className="h-10 px-2.5 bg-black/60 backdrop-blur-sm rounded-full flex items-center gap-1.5 text-white/70 hover:text-white/90 transition-colors border border-white/10"
           >
             {Array.from(connectedPeers).slice(0, 3).map((peerId) => {
               const state = peerStates.get(peerId);
@@ -376,16 +376,16 @@ function VoiceParticipant({
           {!isSelf && onVolumeChange && (
             <button
               onClick={() => setShowSlider(!showSlider)}
-              className="w-6 h-6 flex items-center justify-center text-white/40 hover:text-white/80 transition-colors rounded"
+              className="w-8 h-8 flex items-center justify-center text-white/40 hover:text-white/80 transition-colors rounded"
               title="Adjust volume"
             >
-              <SpeakerIcon size={12} muted={muted} volume={volume ?? 1} />
+              <SpeakerIcon size={14} muted={muted} volume={volume ?? 1} />
             </button>
           )}
           <button
             onClick={onToggleMute}
             className={cn(
-              "w-6 h-6 flex items-center justify-center rounded transition-colors",
+              "w-8 h-8 flex items-center justify-center rounded transition-colors",
               muted
                 ? "text-red-400 hover:text-red-300 bg-red-500/10"
                 : "text-white/40 hover:text-white/80",

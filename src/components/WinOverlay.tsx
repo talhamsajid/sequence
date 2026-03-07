@@ -28,7 +28,7 @@ export function WinOverlay({ state, playerId, onPlayAgain, onLeave }: WinOverlay
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl p-8 mx-4 text-center max-w-sm w-full">
         <div className="text-5xl mb-4">{isWinner ? "\uD83C\uDFC6" : "\uD83D\uDE14"}</div>
         <h2 className="text-2xl font-bold mb-2">
