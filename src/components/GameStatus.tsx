@@ -12,8 +12,6 @@ interface GameStatusProps {
   soundOn?: boolean;
   onToggleSound?: () => void;
   onLeave?: () => void;
-  sequenceCount?: number;
-  sequencesNeeded?: number;
   boardFlipped?: boolean;
   onToggleFlip?: () => void;
 }
@@ -61,8 +59,6 @@ export function GameStatus({
   soundOn = true,
   onToggleSound,
   onLeave,
-  sequenceCount,
-  sequencesNeeded,
   boardFlipped,
   onToggleFlip,
 }: GameStatusProps) {
@@ -182,15 +178,6 @@ export function GameStatus({
           )}
         </div>
       </div>
-
-      {/* Sequence count */}
-      {sequenceCount !== undefined && sequencesNeeded !== undefined && (
-        <div className="flex items-center gap-0.5 px-1.5 py-0.5 bg-emerald-500/20 rounded-full shrink-0 border border-emerald-500/30">
-          <span className="text-[11px] font-bold text-emerald-300">{sequenceCount}</span>
-          <span className="text-[11px] text-white/40">/</span>
-          <span className="text-[11px] text-white/60">{sequencesNeeded}</span>
-        </div>
-      )}
 
       {/* Action buttons */}
       <div className="flex items-center gap-0 shrink-0">

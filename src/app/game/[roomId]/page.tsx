@@ -16,7 +16,7 @@ import {
 } from "@/lib/game";
 import { isOneEyedJack } from "@/lib/board";
 import { getPlayerId, getPlayerName, setPlayerName } from "@/lib/utils";
-import { getMaxPlayers, getPlayerTeam, countTeamSequences, switchPlayerTeam, getPlayerTeamColor } from "@/lib/teams";
+import { getMaxPlayers, switchPlayerTeam, getPlayerTeamColor } from "@/lib/teams";
 import type { PlayerColor } from "@/lib/game";
 import {
   playChipSound,
@@ -314,12 +314,6 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
     }
   }, [state, roomId]);
 
-  // Update sequences needed (host only, in lobby)
-  const handleUpdateSequencesNeeded = useCallback(async (n: number) => {
-    if (!state || state.hostId !== playerId) return;
-    await setRoom(roomId, { ...state, sequencesNeeded: n });
-  }, [state, playerId, roomId]);
-
   // Switch team (lobby only, teams mode)
   const handleSwitchTeam = useCallback(async (targetTeamId: string) => {
     if (!state || state.mode !== "teams" || !state.teams) return;
@@ -486,7 +480,6 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
         playerId={playerId}
         onStart={handleStart}
         onLeave={handleLeave}
-        onUpdateSequencesNeeded={handleUpdateSequencesNeeded}
         onSwitchTeam={handleSwitchTeam}
         onChangeColor={handleChangeColor}
         roomCode={roomId}
@@ -506,14 +499,6 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
     }
   });
 
-  const sequenceCount = (() => {
-    if (state.mode === "teams" && state.teams) {
-      const teamInfo = getPlayerTeam(state.teams, playerId);
-      return teamInfo ? countTeamSequences(state.sequences, teamInfo.team.color) : 0;
-    }
-    return state.sequences.filter((s) => s.color === player?.color).length;
-  })();
-
   return (
     <div className="h-dvh flex flex-col bg-gradient-to-b from-emerald-900 to-emerald-950 overflow-hidden" style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
       {/* Status bar */}
@@ -524,8 +509,6 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
           soundOn={soundOn}
           onToggleSound={handleToggleSound}
           onLeave={handleLeave}
-          sequenceCount={sequenceCount}
-          sequencesNeeded={state.sequencesNeeded}
           boardFlipped={boardFlipped}
           onToggleFlip={handleToggleFlip}
         />

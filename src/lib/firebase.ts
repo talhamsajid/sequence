@@ -77,6 +77,8 @@ function hydrateGameState(raw: Record<string, unknown>): GameState {
     turnStartedAt: state.turnStartedAt ?? null,
     turnTimeLimit: state.turnTimeLimit ?? 60,
     lastActivity: state.lastActivity ?? state.createdAt ?? 0,
+    gameHistory: Array.isArray(state.gameHistory) ? state.gameHistory : [],
+    scores: state.scores ?? null,
   };
 }
 

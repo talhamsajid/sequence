@@ -46,11 +46,21 @@ export interface GameState {
   createdAt: number;
   lastActivity: number;
   hostId: string;
+  gameHistory: GameHistoryEntry[];
+  scores: Record<string, number> | null; // player/team ID → sequence count on finish
 }
 
 export interface Sequence {
   cells: [number, number][];
   color: PlayerColor;
+}
+
+export interface GameHistoryEntry {
+  gameNumber: number;
+  winnerId: string | null;
+  winnerLabel: string;
+  scores: Record<string, { name: string; color: string; sequences: number }>;
+  timestamp: number;
 }
 
 const HAND_SIZE: Record<number, number> = {
@@ -114,6 +124,8 @@ export function createGame(
     createdAt: Date.now(),
     lastActivity: Date.now(),
     hostId,
+    gameHistory: [],
+    scores: null,
   };
 }
 
@@ -288,6 +300,9 @@ export function startGame(state: GameState): GameState {
       ? buildTeamTurnOrder(state.teams)
       : state.playerOrder;
 
+  // Preserve game history; if restarting from a finished game, the result was already recorded
+  const gameHistory = state.gameHistory ?? [];
+
   return {
     ...state,
     phase: "playing",
@@ -303,6 +318,8 @@ export function startGame(state: GameState): GameState {
     lastMove: null,
     turnStartedAt: Date.now(),
     turnTimeLimit: 60,
+    gameHistory,
+    scores: null,
   };
 }
 
@@ -364,46 +381,116 @@ export function playCard(
   // Check for new sequences
   const newSequences = findAllSequences(newChips, state.sequences);
 
-  // Check for winner
-  let isWinner = false;
-  let winnerId: string | null = null;
-  let winnerLabel: string | null = null;
+  // Check if game should end: all cards exhausted (deck empty + all hands empty)
+  // or no remaining player can make a move
+  const deckEmpty = newDeckIndex >= state.deck.length;
+  const allHandsEmpty = Object.values(newPlayers).every((p) => p.hand.length === 0);
 
-  if (state.mode === "teams" && state.teams) {
-    const teamInfo = getPlayerTeam(state.teams, playerId);
-    if (teamInfo) {
-      const teamSeqs = countTeamSequences(newSequences, teamInfo.team.color);
-      isWinner = teamSeqs >= state.sequencesNeeded;
-      if (isWinner) {
-        winnerId = teamInfo.teamId;
-        winnerLabel = teamInfo.team.name;
-      }
-    }
-  } else {
-    const playerSeqs = countPlayerSequences(newSequences, player.color);
-    isWinner = playerSeqs >= state.sequencesNeeded;
-    if (isWinner) {
-      winnerId = playerId;
-      winnerLabel = player.name;
-    }
+  let gameOver = allHandsEmpty && deckEmpty;
+
+  // If deck empty but some players have cards, check if any move remains
+  if (!gameOver && deckEmpty) {
+    const tempState = { ...state, players: newPlayers, chips: newChips, sequences: newSequences, deckIndex: newDeckIndex };
+    const anyPlayable = state.playerOrder.some((pid) => {
+      const p = newPlayers[pid];
+      return p.hand.length > 0 && p.hand.some((c) => getValidPositions(tempState, c).length > 0);
+    });
+    if (!anyPlayable) gameOver = true;
   }
 
-  // Advance turn
-  const nextTurn = (state.currentTurn + 1) % state.playerOrder.length;
+  if (gameOver) {
+    const result = determineWinner(newSequences, newPlayers, state);
+    const historyEntry: GameHistoryEntry = {
+      gameNumber: (state.gameHistory?.length ?? 0) + 1,
+      winnerId: result.winnerId,
+      winnerLabel: result.winnerLabel,
+      scores: result.scoreDetails,
+      timestamp: Date.now(),
+    };
+
+    return {
+      ...state,
+      players: newPlayers,
+      chips: newChips,
+      deckIndex: newDeckIndex,
+      sequences: newSequences,
+      phase: "finished",
+      winner: result.winnerId,
+      winnerLabel: result.winnerLabel,
+      scores: result.scores,
+      lastMove: { row, col, card, playerId },
+      turnStartedAt: null,
+      gameHistory: [...(state.gameHistory ?? []), historyEntry],
+    };
+  }
+
+  // Advance turn, skipping players with empty hands
+  let nextTurn = (state.currentTurn + 1) % state.playerOrder.length;
+  let attempts = 0;
+  while (attempts < state.playerOrder.length) {
+    const nextPid = state.playerOrder[nextTurn];
+    if (newPlayers[nextPid].hand.length > 0) break;
+    nextTurn = (nextTurn + 1) % state.playerOrder.length;
+    attempts++;
+  }
 
   return {
     ...state,
     players: newPlayers,
     chips: newChips,
     deckIndex: newDeckIndex,
-    currentTurn: isWinner ? state.currentTurn : nextTurn,
+    currentTurn: nextTurn,
     sequences: newSequences,
-    winner: isWinner ? winnerId : null,
-    winnerLabel: isWinner ? winnerLabel : null,
-    phase: isWinner ? "finished" : "playing",
+    winner: null,
+    winnerLabel: null,
+    phase: "playing",
     lastMove: { row, col, card, playerId },
-    turnStartedAt: isWinner ? null : Date.now(),
+    turnStartedAt: Date.now(),
   };
+}
+
+function determineWinner(
+  sequences: Sequence[],
+  players: Record<string, Player>,
+  state: GameState
+): {
+  winnerId: string | null;
+  winnerLabel: string;
+  scores: Record<string, number>;
+  scoreDetails: Record<string, { name: string; color: string; sequences: number }>;
+} {
+  const scores: Record<string, number> = {};
+  const scoreDetails: Record<string, { name: string; color: string; sequences: number }> = {};
+
+  if (state.mode === "teams" && state.teams) {
+    for (const [teamId, team] of Object.entries(state.teams)) {
+      const count = countTeamSequences(sequences, team.color);
+      scores[teamId] = count;
+      scoreDetails[teamId] = { name: team.name, color: team.color, sequences: count };
+    }
+  } else {
+    for (const pid of state.playerOrder) {
+      const p = players[pid];
+      const count = countPlayerSequences(sequences, p.color);
+      scores[pid] = count;
+      scoreDetails[pid] = { name: p.name, color: p.color, sequences: count };
+    }
+  }
+
+  const maxScore = Math.max(...Object.values(scores), 0);
+
+  if (maxScore === 0) {
+    return { winnerId: null, winnerLabel: "Draw — no sequences!", scores, scoreDetails };
+  }
+
+  const winners = Object.entries(scores).filter(([, s]) => s === maxScore);
+
+  if (winners.length === 1) {
+    const id = winners[0][0];
+    return { winnerId: id, winnerLabel: scoreDetails[id].name, scores, scoreDetails };
+  }
+
+  return { winnerId: null, winnerLabel: "Draw!", scores, scoreDetails };
 }
 
 function isCellInSequence(sequences: Sequence[], row: number, col: number): boolean {
