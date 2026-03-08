@@ -145,7 +145,7 @@ export function CardCell({
         isHighlighted && "border-transparent",
         isLastMove && !isHighlighted && "border-amber-400/80",
         isHighlighted && "cursor-pointer scale-[1.06]",
-        disabled && !isHighlighted && !chip && "opacity-60 brightness-95",
+        disabled && !isHighlighted && !chip && "opacity-90",
         isInSequence && "brightness-95",
       )}
       style={{

@@ -55,6 +55,7 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
   const [boardFlipped, setBoardFlipped] = useState(() => getStoredFlip());
   const [connectedPlayers, setConnectedPlayers] = useState<Set<string>>(() => new Set());
   const [nameInput, setNameInput] = useState("");
+  const [roomChecked, setRoomChecked] = useState(false);
 
   // Track previous values for change detection
   const prevTurnRef = useRef<number | null>(null);
@@ -65,6 +66,7 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
   useEffect(() => {
     const unsubscribe = subscribeToRoom(roomId, (gameState) => {
       setState(gameState);
+      setRoomChecked(true);
 
       // Auto-join: player not in game, lobby phase
       if (gameState && !joining && !gameState.players[playerId] && gameState.phase === "waiting") {
@@ -394,6 +396,12 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
   }, [boardFlipped]);
 
   if (!state) {
+    // Room confirmed missing — redirect home
+    if (roomChecked) {
+      router.replace("/");
+      return null;
+    }
+
     return (
       <div className="min-h-dvh flex items-center justify-center bg-gradient-to-b from-emerald-900 to-emerald-950">
         <div className="text-white text-center">
