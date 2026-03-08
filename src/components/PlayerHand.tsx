@@ -30,7 +30,7 @@ function JackBadge({ card }: { card: Card }) {
 
 export function PlayerHand({ hand, selectedIndex, onSelect, isMyTurn, validCards }: PlayerHandProps) {
   return (
-    <div className="flex gap-1.5 sm:gap-2.5 justify-center px-2 py-2.5 sm:py-3 overflow-x-auto">
+    <div className="flex gap-1.5 sm:gap-2.5 justify-center px-14 py-2.5 sm:py-3 sm:px-4 overflow-x-auto">
       {hand.map((card, i) => {
         const isSelected = selectedIndex === i;
         const hasValidMove = validCards.has(i);

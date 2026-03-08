@@ -295,8 +295,8 @@ export function Chat({ roomId, playerId, playerName, playerColor }: ChatProps) {
       {!isOpen && (
         <button
           onClick={toggleChat}
-          className="fixed right-3 z-40 w-11 h-11 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full shadow-lg flex items-center justify-center transition-all active:scale-95"
-          style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 5.5rem)" }}
+          className="fixed right-1.5 z-40 w-11 h-11 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full shadow-lg flex items-center justify-center transition-all active:scale-95"
+          style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 0.625rem)" }}
           aria-label="Open chat"
         >
           <svg

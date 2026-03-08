@@ -182,14 +182,14 @@ export function VoiceChat({ roomId, playerId, playerName, playerColor, players }
     <>
       {/* Error toast */}
       {error && (
-        <div className="fixed left-3 z-50 px-3 py-2 bg-red-500 text-white text-xs rounded-lg shadow-lg max-w-48" style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 9.5rem)" }}>
+        <div className="fixed left-1.5 z-50 px-3 py-2 bg-red-500 text-white text-xs rounded-lg shadow-lg max-w-48" style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 6rem)" }}>
           {error}
         </div>
       )}
 
       {/* Voice panel */}
       {isActive && panelOpen && (
-        <div className="fixed left-3 z-[35] w-56 bg-black/80 backdrop-blur-md rounded-xl border border-white/10 shadow-2xl overflow-hidden" style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 8.5rem)" }}>
+        <div className="fixed left-1.5 z-[35] w-56 bg-black/80 backdrop-blur-md rounded-xl border border-white/10 shadow-2xl overflow-hidden" style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 5rem)" }}>
           <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
             <span className="text-xs font-semibold text-white/80 uppercase tracking-wider">
               Voice Chat
@@ -251,8 +251,30 @@ export function VoiceChat({ roomId, playerId, playerName, playerColor, players }
         </div>
       )}
 
-      {/* Floating button area */}
-      <div className="fixed left-3 z-40 flex items-center gap-2" style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 5.5rem)" }}>
+      {/* Floating button area — vertically stacked in hand row */}
+      <div className="fixed left-1.5 z-40 flex flex-col items-center gap-1.5" style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 0.625rem)" }}>
+        {isActive && !panelOpen && (
+          <button
+            onClick={() => setPanelOpen(true)}
+            className="w-9 h-9 bg-black/60 backdrop-blur-sm rounded-full flex items-center justify-center text-white/70 hover:text-white/90 transition-colors border border-white/10"
+          >
+            {connectedPeers.size > 0 ? (
+              <span className="text-sm">
+                {getPlayerAvatar(Array.from(connectedPeers)[0])}
+              </span>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="18 15 12 9 6 15" />
+              </svg>
+            )}
+            {connectedPeers.size > 1 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-600 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                {connectedPeers.size}
+              </span>
+            )}
+          </button>
+        )}
+
         <button
           onClick={handleClick}
           className={cn(
@@ -277,35 +299,6 @@ export function VoiceChat({ roomId, playerId, playerName, playerColor, players }
             <MicIcon />
           )}
         </button>
-
-        {isActive && !panelOpen && (
-          <button
-            onClick={() => setPanelOpen(true)}
-            className="h-10 px-2.5 bg-black/60 backdrop-blur-sm rounded-full flex items-center gap-1.5 text-white/70 hover:text-white/90 transition-colors border border-white/10"
-          >
-            {Array.from(connectedPeers).slice(0, 3).map((peerId) => {
-              const state = peerStates.get(peerId);
-              const color = players[peerId]?.color ?? "blue";
-              return (
-                <span
-                  key={peerId}
-                  className={cn(
-                    "text-sm transition-all",
-                    state?.speaking && COLOR_GLOW[color],
-                  )}
-                >
-                  {getPlayerAvatar(peerId)}
-                </span>
-              );
-            })}
-            {connectedPeers.size === 0 && (
-              <span className="text-xs">...</span>
-            )}
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="18 15 12 9 6 15" />
-            </svg>
-          </button>
-        )}
       </div>
     </>
   );
