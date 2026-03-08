@@ -44,6 +44,7 @@ export interface GameState {
   turnStartedAt: number | null;
   turnTimeLimit: number;
   createdAt: number;
+  lastActivity: number;
   hostId: string;
 }
 
@@ -111,6 +112,7 @@ export function createGame(
     turnStartedAt: null,
     turnTimeLimit: 60,
     createdAt: Date.now(),
+    lastActivity: Date.now(),
     hostId,
   };
 }
@@ -199,85 +201,51 @@ export function removePlayer(state: GameState, playerId: string): GameState | nu
     };
   }
 
-  // Playing phase — need to handle turn advancement and win conditions
+  // Playing phase — mark as disconnected instead of removing.
+  // Their turns will be auto-played by the timer. They can rejoin.
+  const disconnectedPlayers = {
+    ...state.players,
+    [playerId]: { ...state.players[playerId], connected: false },
+  };
 
-  // If only 1 player remains, they win
-  if (remainingCount === 1) {
-    const lastPlayerId = newPlayerOrder[0];
-    const lastPlayer = remainingPlayers[lastPlayerId];
-
-    let winLabel = lastPlayer.name;
-    let winnerId: string = lastPlayerId;
-
-    if (state.mode === "teams" && newTeams) {
-      const teamInfo = getPlayerTeam(newTeams, lastPlayerId);
-      if (teamInfo) {
-        winnerId = teamInfo.teamId;
-        winLabel = teamInfo.team.name;
-      }
-    }
-
+  // Check if ALL players are now disconnected — end game
+  const connectedCount = Object.values(disconnectedPlayers).filter((p) => p.connected).length;
+  if (connectedCount === 0) {
     return {
       ...state,
       phase: "finished",
-      players: remainingPlayers,
-      playerOrder: newPlayerOrder,
-      teams: newTeams,
+      players: disconnectedPlayers,
       hostId: newHostId,
-      winner: winnerId,
-      winnerLabel: `${winLabel} (opponent left)`,
+      winner: null,
+      winnerLabel: "Everyone left",
       turnStartedAt: null,
     };
   }
 
-  // In teams mode, if an entire team is empty, the other team(s) win
-  if (state.mode === "teams" && newTeams) {
-    const emptyTeams = Object.entries(newTeams).filter(([, t]) => t.playerIds.length === 0);
-    if (emptyTeams.length > 0) {
-      // Find a team that still has players
-      const winningTeamEntry = Object.entries(newTeams).find(([, t]) => t.playerIds.length > 0);
-      if (winningTeamEntry) {
-        return {
-          ...state,
-          phase: "finished",
-          players: remainingPlayers,
-          playerOrder: newPlayerOrder,
-          teams: newTeams,
-          hostId: newHostId,
-          winner: winningTeamEntry[0],
-          winnerLabel: `${winningTeamEntry[1].name} (opponent left)`,
-          turnStartedAt: null,
-        };
-      }
-    }
-  }
-
-  // Fix currentTurn index — if the leaving player was before or at currentTurn, adjust
-  const oldIndex = state.playerOrder.indexOf(playerId);
-  let newCurrentTurn = state.currentTurn;
-
-  if (oldIndex < state.currentTurn) {
-    // Player before current turn left, shift index back
-    newCurrentTurn = state.currentTurn - 1;
-  } else if (oldIndex === state.currentTurn) {
-    // It was the leaving player's turn — keep same index (next player slides in)
-    // But clamp to valid range
-    newCurrentTurn = state.currentTurn;
-  }
-
-  // Clamp to valid range
-  if (newCurrentTurn >= newPlayerOrder.length) {
-    newCurrentTurn = 0;
-  }
+  // Transfer host to a connected player if needed
+  const activeHostId = disconnectedPlayers[newHostId]?.connected
+    ? newHostId
+    : state.playerOrder.find((pid) => disconnectedPlayers[pid]?.connected) ?? newHostId;
 
   return {
     ...state,
-    players: remainingPlayers,
-    playerOrder: newPlayerOrder,
-    currentTurn: newCurrentTurn,
-    teams: newTeams,
-    hostId: newHostId,
-    turnStartedAt: Date.now(), // reset timer for new current player
+    players: disconnectedPlayers,
+    hostId: activeHostId,
+  };
+}
+
+/** Rejoin a disconnected player back into the game. */
+export function rejoinPlayer(state: GameState, playerId: string): GameState {
+  const player = state.players[playerId];
+  if (!player) return state;
+  if (player.connected) return state;
+
+  return {
+    ...state,
+    players: {
+      ...state.players,
+      [playerId]: { ...player, connected: true },
+    },
   };
 }
 

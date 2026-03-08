@@ -1,6 +1,7 @@
 {
   "rules": {
     "games": {
+      ".indexOn": ["lastActivity"],
       "$roomId": {
         ".read": true,
         ".write": true

@@ -107,6 +107,7 @@ export function createVoiceManager(): VoiceManager {
   const connections = new Map<string, RTCPeerConnection>();
   const peerAudio = new Map<string, PeerAudioNodes>();
   const peerStates = new Map<string, PeerAudioState>();
+  const pendingIce = new Map<string, RTCIceCandidateInit[]>();
 
   const unsubscribes: Unsubscribe[] = [];
   const firebaseRefs: ReturnType<typeof ref>[] = [];
@@ -248,11 +249,14 @@ export function createVoiceManager(): VoiceManager {
   ): RTCPeerConnection {
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
 
-    // Add local tracks if we have them
+    // Add local tracks or a sendrecv transceiver for proper SDP audio m= lines
     if (localStream) {
       for (const track of localStream.getTracks()) {
         pc.addTrack(track, localStream);
       }
+    } else {
+      // No mic yet — still negotiate audio so media plane is ready
+      pc.addTransceiver('audio', { direction: 'sendrecv' });
     }
 
     pc.onicecandidate = (event) => {
@@ -270,10 +274,8 @@ export function createVoiceManager(): VoiceManager {
     };
 
     pc.ontrack = (event) => {
-      const remoteStream = event.streams[0];
-      if (remoteStream) {
-        setupPeerAudio(remoteId, remoteStream);
-      }
+      const remoteStream = event.streams[0] ?? new MediaStream([event.track]);
+      setupPeerAudio(remoteId, remoteStream);
     };
 
     pc.oniceconnectionstatechange = () => {
@@ -296,7 +298,18 @@ export function createVoiceManager(): VoiceManager {
       pc.close();
       connections.delete(remoteId);
     }
+    pendingIce.delete(remoteId);
     cleanupPeerAudio(remoteId);
+  }
+
+  function flushPendingIce(remoteId: string, pc: RTCPeerConnection) {
+    const buf = pendingIce.get(remoteId);
+    if (buf) {
+      for (const candidate of buf) {
+        pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
+      }
+      pendingIce.delete(remoteId);
+    }
   }
 
   function listenForIceCandidates(
@@ -313,14 +326,21 @@ export function createVoiceManager(): VoiceManager {
 
     const unsub = onChildAdded(iceRef, (snapshot) => {
       const data = snapshot.val() as IceCandidateData | null;
-      if (data && pc.remoteDescription) {
-        pc.addIceCandidate(
-          new RTCIceCandidate({
-            candidate: data.candidate,
-            sdpMid: data.sdpMid ?? undefined,
-            sdpMLineIndex: data.sdpMLineIndex ?? undefined,
-          }),
-        ).catch(() => {});
+      if (!data) return;
+
+      const candidate: RTCIceCandidateInit = {
+        candidate: data.candidate,
+        sdpMid: data.sdpMid ?? undefined,
+        sdpMLineIndex: data.sdpMLineIndex ?? undefined,
+      };
+
+      if (pc.remoteDescription) {
+        pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
+      } else {
+        // Buffer until remote description is set
+        const buf = pendingIce.get(remoteId) ?? [];
+        buf.push(candidate);
+        pendingIce.set(remoteId, buf);
       }
     });
     unsubscribes.push(unsub);
@@ -359,9 +379,12 @@ export function createVoiceManager(): VoiceManager {
       const pc = createPeerConnection(roomId, peerId, remotePeerId);
 
       try {
+        listenForIceCandidates(roomId, peerId, remotePeerId, pc);
+
         await pc.setRemoteDescription(
           new RTCSessionDescription({ sdp: offerData.sdp, type: offerData.type }),
         );
+        flushPendingIce(remotePeerId, pc);
 
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
@@ -371,8 +394,6 @@ export function createVoiceManager(): VoiceManager {
           `voice/${roomId}/${peerId}/answers/${remotePeerId}`,
         );
         await set(answerRef, { sdp: answer.sdp ?? "", type: answer.type });
-
-        listenForIceCandidates(roomId, peerId, remotePeerId, pc);
       } catch {
         cleanupPeer(remotePeerId);
       }
@@ -407,6 +428,8 @@ export function createVoiceManager(): VoiceManager {
         );
         firebaseRefs.push(answerRef);
 
+        listenForIceCandidates(roomId, peerId, remotePeerId, pc);
+
         const answerUnsub = onValue(answerRef, async (ansSnap) => {
           const answerData = ansSnap.val() as SignalData | null;
           if (!answerData?.sdp) return;
@@ -416,11 +439,10 @@ export function createVoiceManager(): VoiceManager {
             await pc.setRemoteDescription(
               new RTCSessionDescription({ sdp: answerData.sdp, type: answerData.type }),
             );
+            flushPendingIce(remotePeerId, pc);
           } catch {}
         });
         unsubscribes.push(answerUnsub);
-
-        listenForIceCandidates(roomId, peerId, remotePeerId, pc);
       } catch {
         cleanupPeer(remotePeerId);
       }
@@ -455,10 +477,14 @@ export function createVoiceManager(): VoiceManager {
     // Setup local analyser
     setupLocalAnalyser(localStream);
 
-    // Add tracks to all existing peer connections
+    // Replace null track on existing senders (transceiver already negotiated)
+    const audioTrack = localStream.getAudioTracks()[0];
     for (const [, pc] of connections) {
-      for (const track of localStream.getTracks()) {
-        pc.addTrack(track, localStream);
+      const sender = pc.getSenders().find((s) => s.track === null);
+      if (sender && audioTrack) {
+        await sender.replaceTrack(audioTrack);
+      } else if (audioTrack) {
+        pc.addTrack(audioTrack, localStream);
       }
     }
   }
@@ -474,6 +500,7 @@ export function createVoiceManager(): VoiceManager {
 
     for (const [remoteId] of connections) cleanupPeer(remoteId);
     connections.clear();
+    pendingIce.clear();
     peerAudio.clear();
     peerStates.clear();
 

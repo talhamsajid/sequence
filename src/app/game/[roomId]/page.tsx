@@ -2,13 +2,14 @@
 
 import { useEffect, useState, useCallback, useRef, use } from "react";
 import { useRouter } from "next/navigation";
-import { subscribeToRoom, setRoom, deleteRoom } from "@/lib/firebase";
+import { subscribeToRoom, setRoom, deleteRoom, registerPresence } from "@/lib/firebase";
 import {
   type GameState,
   playCard,
   startGame,
   addPlayer,
   removePlayer,
+  rejoinPlayer,
   getValidPositions,
   hasPlayableCard,
   replaceDeadCards,
@@ -64,18 +65,33 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
     const unsubscribe = subscribeToRoom(roomId, (gameState) => {
       setState(gameState);
 
-      // Auto-join if not in game
-      if (gameState && !gameState.players[playerId] && gameState.phase === "waiting" && !joining) {
-        const name = getPlayerName();
-        const teamCount = gameState.teams ? Object.keys(gameState.teams).length : 0;
-        const maxPlayers = getMaxPlayers(gameState.mode, teamCount);
-        if (name && Object.keys(gameState.players).length < maxPlayers) {
+      if (gameState && !joining) {
+        const existingPlayer = gameState.players[playerId];
+
+        // Rejoin: player exists but disconnected — reconnect them
+        if (existingPlayer && !existingPlayer.connected && gameState.phase !== "waiting") {
           setJoining(true);
           try {
-            const updated = addPlayer(gameState, playerId, name);
+            const updated = rejoinPlayer(gameState, playerId);
             setRoom(roomId, updated).finally(() => setJoining(false));
           } catch {
             setJoining(false);
+          }
+        }
+
+        // Auto-join: player not in game, lobby phase
+        if (!existingPlayer && gameState.phase === "waiting") {
+          const name = getPlayerName();
+          const teamCount = gameState.teams ? Object.keys(gameState.teams).length : 0;
+          const maxPlayers = getMaxPlayers(gameState.mode, teamCount);
+          if (name && Object.keys(gameState.players).length < maxPlayers) {
+            setJoining(true);
+            try {
+              const updated = addPlayer(gameState, playerId, name);
+              setRoom(roomId, updated).finally(() => setJoining(false));
+            } catch {
+              setJoining(false);
+            }
           }
         }
       }
@@ -83,6 +99,21 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
 
     return unsubscribe;
   }, [roomId, playerId, joining]);
+
+  // Presence: register onDisconnect so Firebase marks player disconnected on tab/app close
+  const presenceCleanupRef = useRef<(() => void) | null>(null);
+  const isInGame = !!state?.players[playerId];
+
+  useEffect(() => {
+    if (!isInGame) return;
+
+    presenceCleanupRef.current = registerPresence(roomId, playerId);
+
+    return () => {
+      presenceCleanupRef.current?.();
+      presenceCleanupRef.current = null;
+    };
+  }, [roomId, playerId, isInGame]);
 
   // Sound effects on state changes
   useEffect(() => {
@@ -165,6 +196,53 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
       clearInterval(interval);
     };
   }, [isMyTurn, turnStartedAt, turnTimeLimit, playerId, roomId]);
+
+  // Auto-play for disconnected players instantly (host's client handles this)
+  useEffect(() => {
+    if (!state || state.phase !== "playing" || state.hostId !== playerId) return;
+
+    const currentPlayer = state.playerOrder[state.currentTurn];
+    const player = state.players[currentPlayer];
+    if (!player || player.connected) return;
+
+    // Disconnected player's turn — auto-play after brief delay to avoid race
+    if (autoPlayingRef.current) return;
+
+    const timeout = setTimeout(async () => {
+      if (autoPlayingRef.current) return;
+      autoPlayingRef.current = true;
+
+      const currentState = stateRef.current;
+      if (!currentState || currentState.phase !== "playing") {
+        autoPlayingRef.current = false;
+        return;
+      }
+
+      const dcPlayerId = currentState.playerOrder[currentState.currentTurn];
+      const dcPlayer = currentState.players[dcPlayerId];
+      if (!dcPlayer || dcPlayer.connected) {
+        autoPlayingRef.current = false;
+        return;
+      }
+
+      const move = getRandomValidMove(currentState, dcPlayerId);
+      if (move) {
+        try {
+          let newState = playCard(currentState, dcPlayerId, move.cardIndex, move.row, move.col);
+          const nextPlayerId = newState.playerOrder[newState.currentTurn];
+          if (newState.phase === "playing" && !hasPlayableCard(newState, nextPlayerId)) {
+            newState = replaceDeadCards(newState, nextPlayerId);
+          }
+          await setRoom(roomId, newState);
+        } catch {
+          // State may have changed
+        }
+      }
+      autoPlayingRef.current = false;
+    }, 1500);
+
+    return () => clearTimeout(timeout);
+  }, [state, playerId, roomId]);
 
   // Tick-tock countdown sound when <=15 seconds remain (current player's turn only)
   useEffect(() => {

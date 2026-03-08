@@ -11,6 +11,7 @@ interface CardCellProps {
   isHighlighted: boolean;
   isLastMove: boolean;
   isInSequence: boolean;
+  sequenceColor: PlayerColor | null;
   onClick: () => void;
   disabled: boolean;
   cellFlipped?: boolean;
@@ -121,6 +122,7 @@ export function CardCell({
   isHighlighted,
   isLastMove,
   isInSequence,
+  sequenceColor,
   onClick,
   disabled,
   cellFlipped = false,
@@ -179,6 +181,28 @@ export function CardCell({
         <div
           className="absolute inset-[2px] rounded-sm pointer-events-none border border-amber-400/50"
           style={{ boxShadow: "inset 0 0 4px rgba(245,158,11,0.2)" }}
+        />
+      )}
+
+      {/* Sequence color overlay */}
+      {isInSequence && sequenceColor && (
+        <div
+          className="absolute inset-0 pointer-events-none rounded-sm"
+          style={{
+            boxShadow: `inset 0 0 0 1.5px ${
+              sequenceColor === "red"
+                ? "rgba(239,68,68,0.7)"
+                : sequenceColor === "blue"
+                ? "rgba(59,130,246,0.7)"
+                : "rgba(16,185,129,0.7)"
+            }`,
+            background:
+              sequenceColor === "red"
+                ? "rgba(239,68,68,0.12)"
+                : sequenceColor === "blue"
+                ? "rgba(59,130,246,0.12)"
+                : "rgba(16,185,129,0.12)",
+          }}
         />
       )}
 

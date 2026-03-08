@@ -30,11 +30,14 @@ export function GameBoard({
     positions.forEach(([r, c]) => validPositions.add(`${r},${c}`));
   }
 
-  // Cells in completed sequences
+  // Cells in completed sequences → map to sequence color
   const sequenceCells = new Set<string>();
+  const sequenceCellColors = new Map<string, string>();
   for (const seq of state.sequences) {
     for (const [r, c] of seq.cells) {
-      sequenceCells.add(`${r},${c}`);
+      const k = `${r},${c}`;
+      sequenceCells.add(k);
+      sequenceCellColors.set(k, seq.color);
     }
   }
 
@@ -80,6 +83,7 @@ export function GameBoard({
                   state.lastMove?.row === r && state.lastMove?.col === c
                 }
                 isInSequence={sequenceCells.has(key)}
+                sequenceColor={(sequenceCellColors.get(key) as import("@/lib/game").PlayerColor) ?? null}
                 onClick={() => onCellClick(r, c)}
                 disabled={!isValid}
                 cellFlipped={boardFlipped}

@@ -7,6 +7,7 @@ import {
   onValue,
   update,
   remove,
+  onDisconnect,
   type Database,
 } from "firebase/database";
 import type { GameState, ChipGrid } from "./game";
@@ -75,6 +76,7 @@ function hydrateGameState(raw: Record<string, unknown>): GameState {
     lastMove: state.lastMove ?? null,
     turnStartedAt: state.turnStartedAt ?? null,
     turnTimeLimit: state.turnTimeLimit ?? 60,
+    lastActivity: state.lastActivity ?? state.createdAt ?? 0,
   };
 }
 
@@ -123,7 +125,7 @@ export async function updateRoom(roomId: string, updates: Partial<GameState>): P
 }
 
 export async function setRoom(roomId: string, state: GameState): Promise<void> {
-  await set(gameRef(roomId), state);
+  await set(gameRef(roomId), { ...state, lastActivity: Date.now() });
 }
 
 export function subscribeToRoom(
@@ -134,6 +136,31 @@ export function subscribeToRoom(
     callback(snapshot.exists() ? hydrateGameState(snapshot.val()) : null);
   });
   return unsubscribe;
+}
+
+/**
+ * Register presence for a player. Sets connected=true now,
+ * and schedules connected=false via Firebase onDisconnect
+ * (fires server-side when the client drops — tab close, app kill, network loss).
+ * Returns a cleanup function to cancel the onDisconnect handler.
+ */
+export function registerPresence(
+  roomId: string,
+  playerId: string,
+): () => void {
+  const connectedRef = ref(getDb(), `games/${roomId}/players/${playerId}/connected`);
+
+  // Mark connected now
+  set(connectedRef, true).catch(() => {});
+
+  // When client disconnects, Firebase server sets connected=false
+  const disconnectRef = onDisconnect(connectedRef);
+  disconnectRef.set(false).catch(() => {});
+
+  // Return cleanup that cancels the onDisconnect (e.g. when leaving explicitly)
+  return () => {
+    disconnectRef.cancel().catch(() => {});
+  };
 }
 
 export async function deleteRoom(roomId: string): Promise<void> {
