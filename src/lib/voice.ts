@@ -141,23 +141,27 @@ export function createVoiceManager(): VoiceManager {
   function setupPeerAudio(peerId: string, stream: MediaStream) {
     const ctx = getAudioContext();
     const source = ctx.createMediaStreamSource(stream);
-    const gain = ctx.createGain();
+    const gain = ctx.createGain(); // kept for API compat but not used for playback
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 256;
 
+    // Web Audio API used ONLY for speaking detection analysis
     source.connect(analyser);
-    source.connect(gain);
-    gain.connect(ctx.destination);
 
+    // Use <audio> element for actual playback (works on iOS Safari)
     const audioElement = new Audio();
     audioElement.srcObject = stream;
     audioElement.autoplay = true;
-    audioElement.volume = 0; // routed through Web Audio API
+    audioElement.setAttribute("playsinline", "true");
 
     const existing = peerStates.get(peerId);
     const vol = existing?.volume ?? 1;
     const mut = existing?.muted ?? false;
-    gain.gain.value = mut ? 0 : vol;
+    audioElement.volume = mut ? 0 : vol;
+    audioElement.muted = mut;
+
+    // Explicit play() for mobile autoplay restrictions
+    audioElement.play().catch(() => {});
 
     peerAudio.set(peerId, { source, gain, analyser, audioElement });
 
@@ -567,7 +571,7 @@ export function createVoiceManager(): VoiceManager {
       peerStates.set(peerId, { ...state, volume: clamped });
     }
     if (nodes && state && !state.muted) {
-      nodes.gain.gain.value = clamped;
+      nodes.audioElement.volume = clamped;
     }
   }
 
@@ -579,7 +583,8 @@ export function createVoiceManager(): VoiceManager {
       peerStates.set(peerId, { ...state, muted: isMuted, speaking: false });
     }
     if (nodes) {
-      nodes.gain.gain.value = isMuted ? 0 : (state?.volume ?? 1);
+      nodes.audioElement.muted = isMuted;
+      nodes.audioElement.volume = isMuted ? 0 : (state?.volume ?? 1);
     }
     speakingChangeCb?.(new Map(peerStates), localSpeaking);
   }
