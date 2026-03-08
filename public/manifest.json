@@ -2,11 +2,16 @@
   "name": "Sequence - Online Board Game",
   "short_name": "Sequence",
   "description": "Play the classic Sequence board game online with friends",
+  "id": "/",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#064e3b",
   "theme_color": "#064e3b",
   "orientation": "portrait",
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  },
   "icons": [
     {
       "src": "/icon-192.png",

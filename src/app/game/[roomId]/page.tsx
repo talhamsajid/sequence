@@ -15,7 +15,7 @@ import {
   getRandomValidMove,
 } from "@/lib/game";
 import { isOneEyedJack } from "@/lib/board";
-import { getPlayerId, getPlayerName } from "@/lib/utils";
+import { getPlayerId, getPlayerName, setPlayerName } from "@/lib/utils";
 import { getMaxPlayers, getPlayerTeam, countTeamSequences, switchPlayerTeam, getPlayerTeamColor } from "@/lib/teams";
 import type { PlayerColor } from "@/lib/game";
 import {
@@ -54,6 +54,7 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
   const [soundOn, setSoundOn] = useState(() => isSoundEnabled());
   const [boardFlipped, setBoardFlipped] = useState(() => getStoredFlip());
   const [connectedPlayers, setConnectedPlayers] = useState<Set<string>>(() => new Set());
+  const [nameInput, setNameInput] = useState("");
 
   // Track previous values for change detection
   const prevTurnRef = useRef<number | null>(null);
@@ -395,19 +396,60 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
   if (!state.players[playerId]) {
     const notInGameTeamCount = state.teams ? Object.keys(state.teams).length : 0;
     const notInGameMaxPlayers = getMaxPlayers(state.mode, notInGameTeamCount);
+    const isFull = Object.keys(state.players).length >= notInGameMaxPlayers;
+    const canJoin = state.phase === "waiting" && !isFull;
+    const needsName = canJoin && !getPlayerName();
+
+    const handleNameJoin = async () => {
+      if (!nameInput.trim() || !state) return;
+      setPlayerName(nameInput.trim());
+      setJoining(true);
+      try {
+        const updated = addPlayer(state, playerId, nameInput.trim());
+        await setRoom(roomId, updated);
+      } catch {
+        // Will retry on next state update
+      }
+      setJoining(false);
+    };
+
     return (
       <div className="min-h-dvh flex items-center justify-center bg-gradient-to-b from-emerald-900 to-emerald-950">
-        <div className="text-white text-center p-6">
-          <p className="text-lg mb-4">
-            {Object.keys(state.players).length >= notInGameMaxPlayers
-              ? "This game is full."
-              : state.phase !== "waiting"
-              ? "This game has already started."
-              : "Joining..."}
-          </p>
+        <div className="text-white text-center p-6 w-full max-w-sm">
+          {needsName ? (
+            <>
+              <h2 className="text-2xl font-bold mb-1">Join Game</h2>
+              <p className="text-emerald-300/60 text-sm mb-6">Enter your name to join</p>
+              <input
+                type="text"
+                value={nameInput}
+                onChange={(e) => setNameInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleNameJoin()}
+                placeholder="Your name"
+                maxLength={20}
+                autoFocus
+                className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white font-medium text-sm placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent mb-3"
+              />
+              <button
+                onClick={handleNameJoin}
+                disabled={!nameInput.trim() || joining}
+                className="w-full py-3 rounded-xl font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-all active:scale-[0.98]"
+              >
+                {joining ? "Joining..." : "Join Game"}
+              </button>
+            </>
+          ) : (
+            <p className="text-lg mb-4">
+              {isFull
+                ? "This game is full."
+                : state.phase !== "waiting"
+                ? "This game has already started."
+                : "Joining..."}
+            </p>
+          )}
           <button
             onClick={() => router.push("/")}
-            className="px-6 py-3 bg-white/10 rounded-xl text-white font-medium hover:bg-white/20 transition-all"
+            className="mt-4 px-6 py-3 bg-white/10 rounded-xl text-white font-medium hover:bg-white/20 transition-all"
           >
             Back to Home
           </button>
