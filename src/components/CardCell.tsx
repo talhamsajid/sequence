@@ -48,7 +48,7 @@ function Chip({
   return (
     <div
       className={cn(
-        "absolute inset-[10%] rounded-full shadow-md",
+        "absolute inset-[20%] rounded-full shadow-md",
         outerRing[color],
         isInSequence && "ring-2 ring-offset-0",
         isInSequence && sequenceRing[color]
