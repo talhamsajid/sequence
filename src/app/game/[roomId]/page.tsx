@@ -314,12 +314,6 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
     }
   }, [state, roomId]);
 
-  // Update win condition (host only, in lobby)
-  const handleUpdateSequencesNeeded = useCallback(async (n: number) => {
-    if (!state || state.hostId !== playerId) return;
-    await setRoom(roomId, { ...state, sequencesNeeded: n });
-  }, [state, playerId, roomId]);
-
   // Switch team (lobby only, teams mode)
   const handleSwitchTeam = useCallback(async (targetTeamId: string) => {
     if (!state || state.mode !== "teams" || !state.teams) return;
@@ -486,7 +480,6 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
         playerId={playerId}
         onStart={handleStart}
         onLeave={handleLeave}
-        onUpdateSequencesNeeded={handleUpdateSequencesNeeded}
         onSwitchTeam={handleSwitchTeam}
         onChangeColor={handleChangeColor}
         roomCode={roomId}

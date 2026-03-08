@@ -216,27 +216,32 @@ export default function Home() {
               </div>
             )}
 
-            {/* Sequences needed */}
+            {/* Win condition */}
             <div>
               <label className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-2 block">
-                Sequences to Win
+                Win Condition
               </label>
-              <div className="grid grid-cols-3 gap-2">
-                {[1, 2, 3].map((n) => (
+              <div className="grid grid-cols-4 gap-1.5">
+                {[1, 2, 3, 0].map((n) => (
                   <button
                     key={n}
                     onClick={() => setSequencesNeeded(n)}
                     className={cn(
-                      "py-2.5 rounded-lg font-semibold text-sm transition-all",
+                      "py-2.5 rounded-lg font-semibold text-xs transition-all",
                       sequencesNeeded === n
                         ? "bg-emerald-600 text-white ring-2 ring-emerald-600"
                         : "bg-gray-50 text-gray-600 hover:bg-gray-100"
                     )}
                   >
-                    {n}
+                    {n === 0 ? "Last Card" : `${n} Seq`}
                   </button>
                 ))}
               </div>
+              <p className="text-xs text-gray-400 mt-1.5">
+                {sequencesNeeded === 0
+                  ? "Play until all cards are used — most sequences wins"
+                  : `First to ${sequencesNeeded} sequence${sequencesNeeded > 1 ? "s" : ""} wins`}
+              </p>
             </div>
 
             <button
