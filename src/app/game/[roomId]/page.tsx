@@ -198,9 +198,16 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
     if (!state || state.phase !== "playing" || state.hostId !== playerId) return;
 
     const currentTurnPlayerId2 = state.playerOrder[state.currentTurn];
-    if (!currentTurnPlayerId2 || connectedPlayers.has(currentTurnPlayerId2)) return;
+    // Skip if: no player, player is connected, player is the host (we're running this check),
+    // or presence data is empty (hasn't loaded yet — avoid false positives at game start)
+    if (
+      !currentTurnPlayerId2 ||
+      currentTurnPlayerId2 === playerId ||
+      connectedPlayers.has(currentTurnPlayerId2) ||
+      connectedPlayers.size === 0
+    ) return;
 
-    // Disconnected player's turn — auto-play after brief delay to avoid race
+    // Disconnected player's turn — auto-play after delay to avoid race
     if (autoPlayingRef.current) return;
 
     const timeout = setTimeout(async () => {
@@ -214,7 +221,12 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
       }
 
       const dcPlayerId = currentState.playerOrder[currentState.currentTurn];
-      if (!dcPlayerId || connectedPlayersRef.current.has(dcPlayerId)) {
+      if (
+        !dcPlayerId ||
+        dcPlayerId === playerId ||
+        connectedPlayersRef.current.has(dcPlayerId) ||
+        connectedPlayersRef.current.size === 0
+      ) {
         autoPlayingRef.current = false;
         return;
       }
@@ -233,7 +245,7 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
         }
       }
       autoPlayingRef.current = false;
-    }, 1500);
+    }, 3000);
 
     return () => clearTimeout(timeout);
   }, [state, playerId, roomId, connectedPlayers]);

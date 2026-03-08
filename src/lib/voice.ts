@@ -73,11 +73,27 @@ export interface VoiceManager {
 
 // ── Constants ────────────────────────────────────────────────────────
 
-const ICE_SERVERS: RTCIceServer[] = [
-  { urls: "stun:stun.l.google.com:19302" },
-  { urls: "stun:stun1.l.google.com:19302" },
-  { urls: "stun:stun.relay.metered.ca:80" },
-];
+const ICE_SERVERS: RTCIceServer[] = (() => {
+  const servers: RTCIceServer[] = [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+  ];
+
+  // TURN servers are required for mobile/restrictive networks
+  const turnUrls = process.env.NEXT_PUBLIC_TURN_URLS;
+  const turnUser = process.env.NEXT_PUBLIC_TURN_USERNAME;
+  const turnCred = process.env.NEXT_PUBLIC_TURN_CREDENTIAL;
+
+  if (turnUrls && turnUser && turnCred) {
+    servers.push({
+      urls: turnUrls.split(",").map((u) => u.trim()),
+      username: turnUser,
+      credential: turnCred,
+    });
+  }
+
+  return servers;
+})();
 
 const SPEAKING_THRESHOLD = 15;
 const SPEAKING_POLL_MS = 100;
@@ -85,9 +101,9 @@ const SPEAKING_POLL_MS = 100;
 // ── Audio node bundle per peer ───────────────────────────────────────
 
 interface PeerAudioNodes {
-  source: MediaStreamAudioSourceNode;
-  gain: GainNode;
-  analyser: AnalyserNode;
+  source: MediaStreamAudioSourceNode | null;
+  analyser: AnalyserNode | null;
+  analysisStream: MediaStream | null;
   audioElement: HTMLAudioElement;
 }
 
@@ -139,16 +155,7 @@ export function createVoiceManager(): VoiceManager {
   }
 
   function setupPeerAudio(peerId: string, stream: MediaStream) {
-    const ctx = getAudioContext();
-    const source = ctx.createMediaStreamSource(stream);
-    const gain = ctx.createGain(); // kept for API compat but not used for playback
-    const analyser = ctx.createAnalyser();
-    analyser.fftSize = 256;
-
-    // Web Audio API used ONLY for speaking detection analysis
-    source.connect(analyser);
-
-    // Use <audio> element for actual playback (works on iOS Safari)
+    // Primary: <audio> element for playback (works on all platforms including iOS)
     const audioElement = new Audio();
     audioElement.srcObject = stream;
     audioElement.autoplay = true;
@@ -160,10 +167,28 @@ export function createVoiceManager(): VoiceManager {
     audioElement.volume = mut ? 0 : vol;
     audioElement.muted = mut;
 
-    // Explicit play() for mobile autoplay restrictions
+    // Explicit play() — WebRTC MediaStreams are typically allowed on iOS
     audioElement.play().catch(() => {});
 
-    peerAudio.set(peerId, { source, gain, analyser, audioElement });
+    // Secondary: Web Audio analyser for speaking detection only
+    // MUST clone stream — iOS Safari prevents <audio> playback if the same
+    // stream is consumed by createMediaStreamSource
+    let source: MediaStreamAudioSourceNode | null = null;
+    let analyser: AnalyserNode | null = null;
+    let analysisStream: MediaStream | null = null;
+
+    try {
+      const ctx = getAudioContext();
+      analysisStream = stream.clone();
+      source = ctx.createMediaStreamSource(analysisStream);
+      analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+    } catch {
+      // Web Audio not available — speaking detection disabled, playback still works
+    }
+
+    peerAudio.set(peerId, { source, analyser, analysisStream, audioElement });
 
     if (!peerStates.has(peerId)) {
       peerStates.set(peerId, { peerId, speaking: false, volume: 1, muted: false });
@@ -175,8 +200,9 @@ export function createVoiceManager(): VoiceManager {
     if (nodes) {
       nodes.audioElement.srcObject = null;
       nodes.audioElement.pause();
-      nodes.source.disconnect();
-      nodes.gain.disconnect();
+      nodes.source?.disconnect();
+      // Stop cloned analysis stream tracks
+      nodes.analysisStream?.getTracks().forEach((t) => t.stop());
       peerAudio.delete(peerId);
     }
     peerStates.delete(peerId);
@@ -211,7 +237,7 @@ export function createVoiceManager(): VoiceManager {
 
       for (const [peerId, nodes] of peerAudio) {
         const state = peerStates.get(peerId);
-        if (!state) continue;
+        if (!state || !nodes.analyser) continue;
 
         const rms = getRMS(nodes.analyser);
         const wasSpeaking = state.speaking;
@@ -470,7 +496,12 @@ export function createVoiceManager(): VoiceManager {
   async function acquireMic(): Promise<void> {
     if (micAcquired && localStream) return;
 
-    localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    // Resume AudioContext in user gesture context (required for iOS)
+    getAudioContext();
+
+    localStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    });
     micAcquired = true;
 
     // Start muted — disable tracks
