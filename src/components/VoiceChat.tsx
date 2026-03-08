@@ -182,14 +182,14 @@ export function VoiceChat({ roomId, playerId, playerName, playerColor, players }
     <>
       {/* Error toast */}
       {error && (
-        <div className="fixed bottom-[9.5rem] left-3 z-50 px-3 py-2 bg-red-500 text-white text-xs rounded-lg shadow-lg max-w-48">
+        <div className="fixed left-3 z-50 px-3 py-2 bg-red-500 text-white text-xs rounded-lg shadow-lg max-w-48" style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 9.5rem)" }}>
           {error}
         </div>
       )}
 
       {/* Voice panel */}
       {isActive && panelOpen && (
-        <div className="fixed bottom-[8.5rem] left-3 z-[35] w-56 bg-black/80 backdrop-blur-md rounded-xl border border-white/10 shadow-2xl overflow-hidden">
+        <div className="fixed left-3 z-[35] w-56 bg-black/80 backdrop-blur-md rounded-xl border border-white/10 shadow-2xl overflow-hidden" style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 8.5rem)" }}>
           <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
             <span className="text-xs font-semibold text-white/80 uppercase tracking-wider">
               Voice Chat
@@ -252,7 +252,7 @@ export function VoiceChat({ roomId, playerId, playerName, playerColor, players }
       )}
 
       {/* Floating button area */}
-      <div className="fixed bottom-24 left-3 z-40 flex items-center gap-2">
+      <div className="fixed left-3 z-40 flex items-center gap-2" style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 5.5rem)" }}>
         <button
           onClick={handleClick}
           className={cn(

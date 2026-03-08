@@ -54,11 +54,11 @@ export interface Sequence {
 }
 
 const HAND_SIZE: Record<number, number> = {
-  2: 7,
-  3: 6,
-  4: 6,
-  5: 5,
-  6: 5,
+  2: 6,
+  3: 5,
+  4: 5,
+  5: 4,
+  6: 4,
 };
 
 export interface CreateGameOptions {
