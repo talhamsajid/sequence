@@ -33,6 +33,7 @@ const colorDot: Record<PlayerColor, string> = {
 
 export function Lobby({ state, playerId, onStart, onLeave, onUpdateSequencesNeeded, onSwitchTeam, onChangeColor, roomCode }: LobbyProps) {
   const [copied, setCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
   const isHost = state.hostId === playerId;
   const playerCount = Object.keys(state.players).length;
   const isTeams = state.mode === "teams";
@@ -45,6 +46,30 @@ export function Lobby({ state, playerId, onStart, onLeave, onUpdateSequencesNeed
     await navigator.clipboard.writeText(roomCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const gameUrl = typeof window !== "undefined"
+    ? `${window.location.origin}/game/${roomCode}`
+    : "";
+
+  const shareGame = async () => {
+    const shareData = {
+      title: "Join my Sequence game!",
+      text: `Join my Sequence game! Room code: ${roomCode}`,
+      url: gameUrl,
+    };
+
+    if (navigator.share) {
+      try {
+        await navigator.share(shareData);
+      } catch {
+        // User cancelled or share failed — fallback to copy
+      }
+    } else {
+      await navigator.clipboard.writeText(gameUrl);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    }
   };
 
   return (
@@ -79,6 +104,20 @@ export function Lobby({ state, playerId, onStart, onLeave, onUpdateSequencesNeed
           <p className="text-xs text-gray-400 mt-1">
             {copied ? "Copied!" : "Tap to copy"}
           </p>
+
+          <button
+            onClick={shareGame}
+            className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-full hover:bg-emerald-700 active:scale-95 transition-all"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="18" cy="5" r="3" />
+              <circle cx="6" cy="12" r="3" />
+              <circle cx="18" cy="19" r="3" />
+              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+              <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+            </svg>
+            {linkCopied ? "Link Copied!" : "Invite Friends"}
+          </button>
         </div>
 
         {/* Players list */}
