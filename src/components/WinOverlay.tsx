@@ -121,7 +121,9 @@ export function WinOverlay({ state, playerId, onPlayAgain, onLeave }: WinOverlay
             ? (isTeams ? "Your Team Won!" : "You Won!")
             : `${state.winnerLabel} Wins!`}
         </h2>
-        <p className="text-gray-400 text-sm mb-4">All cards played — final scores</p>
+        <p className="text-gray-400 text-sm mb-4">
+          {state.sequencesNeeded === 0 ? "All cards played — final scores" : "Game over — final scores"}
+        </p>
 
         {/* Scoreboard */}
         {scoreEntries.length > 0 && (

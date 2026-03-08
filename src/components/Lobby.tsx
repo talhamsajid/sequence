@@ -11,6 +11,7 @@ interface LobbyProps {
   playerId: string;
   onStart: () => void;
   onLeave: () => void;
+  onUpdateSequencesNeeded: (n: number) => void;
   onSwitchTeam: (targetTeamId: string) => void;
   onChangeColor: (color: PlayerColor) => void;
   roomCode: string;
@@ -30,7 +31,7 @@ const colorDot: Record<PlayerColor, string> = {
   green: "bg-green-500",
 };
 
-export function Lobby({ state, playerId, onStart, onLeave, onSwitchTeam, onChangeColor, roomCode }: LobbyProps) {
+export function Lobby({ state, playerId, onStart, onLeave, onUpdateSequencesNeeded, onSwitchTeam, onChangeColor, roomCode }: LobbyProps) {
   const [copied, setCopied] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const isHost = state.hostId === playerId;
@@ -232,11 +233,38 @@ export function Lobby({ state, playerId, onStart, onLeave, onSwitchTeam, onChang
           </div>
         )}
 
-        {/* Game info */}
-        <div className="mb-5 text-center">
-          <p className="text-xs text-gray-400">
-            Play until all cards are used — most sequences wins!
+        {/* Win condition selector (host only) */}
+        <div className="mb-5">
+          <label className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-2 block text-center">
+            Win Condition
+          </label>
+          <div className="grid grid-cols-4 gap-1.5">
+            {[1, 2, 3, 0].map((n) => (
+              <button
+                key={n}
+                onClick={() => isHost && onUpdateSequencesNeeded(n)}
+                disabled={!isHost}
+                className={cn(
+                  "py-2.5 rounded-lg font-semibold text-xs transition-all",
+                  state.sequencesNeeded === n
+                    ? "bg-emerald-600 text-white ring-2 ring-emerald-600"
+                    : isHost
+                    ? "bg-gray-50 text-gray-600 hover:bg-gray-100"
+                    : "bg-gray-50 text-gray-400 cursor-not-allowed"
+                )}
+              >
+                {n === 0 ? "Last Card" : `${n} Seq`}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-gray-400 text-center mt-1.5">
+            {state.sequencesNeeded === 0
+              ? "Play until all cards are used — most sequences wins"
+              : `First to ${state.sequencesNeeded} sequence${state.sequencesNeeded > 1 ? "s" : ""} wins`}
           </p>
+          {!isHost && (
+            <p className="text-xs text-gray-400 text-center mt-0.5">Only the host can change this</p>
+          )}
         </div>
 
         {/* Actions */}

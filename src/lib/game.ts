@@ -381,8 +381,75 @@ export function playCard(
   // Check for new sequences
   const newSequences = findAllSequences(newChips, state.sequences);
 
-  // Check if game should end: all cards exhausted (deck empty + all hands empty)
-  // or no remaining player can make a move
+  const isLastCardMode = state.sequencesNeeded === 0;
+
+  // --- Classic mode: first to N sequences wins ---
+  if (!isLastCardMode) {
+    let classicWinner = false;
+    let winnerId: string | null = null;
+    let winnerLabel: string | null = null;
+
+    if (state.mode === "teams" && state.teams) {
+      const teamInfo = getPlayerTeam(state.teams, playerId);
+      if (teamInfo) {
+        const teamSeqs = countTeamSequences(newSequences, teamInfo.team.color);
+        classicWinner = teamSeqs >= state.sequencesNeeded;
+        if (classicWinner) {
+          winnerId = teamInfo.teamId;
+          winnerLabel = teamInfo.team.name;
+        }
+      }
+    } else {
+      const playerSeqs = countPlayerSequences(newSequences, player.color);
+      classicWinner = playerSeqs >= state.sequencesNeeded;
+      if (classicWinner) {
+        winnerId = playerId;
+        winnerLabel = player.name;
+      }
+    }
+
+    if (classicWinner) {
+      const result = determineWinner(newSequences, newPlayers, state);
+      const historyEntry: GameHistoryEntry = {
+        gameNumber: (state.gameHistory?.length ?? 0) + 1,
+        winnerId,
+        winnerLabel: winnerLabel ?? "Unknown",
+        scores: result.scoreDetails,
+        timestamp: Date.now(),
+      };
+
+      return {
+        ...state,
+        players: newPlayers,
+        chips: newChips,
+        deckIndex: newDeckIndex,
+        sequences: newSequences,
+        phase: "finished",
+        winner: winnerId,
+        winnerLabel,
+        scores: result.scores,
+        lastMove: { row, col, card, playerId },
+        turnStartedAt: null,
+        gameHistory: [...(state.gameHistory ?? []), historyEntry],
+      };
+    }
+
+    // Advance turn (classic mode — no skipping needed, hands always refill from deck)
+    const nextTurn = (state.currentTurn + 1) % state.playerOrder.length;
+    return {
+      ...state,
+      players: newPlayers,
+      chips: newChips,
+      deckIndex: newDeckIndex,
+      currentTurn: nextTurn,
+      sequences: newSequences,
+      phase: "playing",
+      lastMove: { row, col, card, playerId },
+      turnStartedAt: Date.now(),
+    };
+  }
+
+  // --- Last Card mode: play until cards exhausted, most sequences wins ---
   const deckEmpty = newDeckIndex >= state.deck.length;
   const allHandsEmpty = Object.values(newPlayers).every((p) => p.hand.length === 0);
 
@@ -441,8 +508,6 @@ export function playCard(
     deckIndex: newDeckIndex,
     currentTurn: nextTurn,
     sequences: newSequences,
-    winner: null,
-    winnerLabel: null,
     phase: "playing",
     lastMove: { row, col, card, playerId },
     turnStartedAt: Date.now(),
