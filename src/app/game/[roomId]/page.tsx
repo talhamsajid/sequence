@@ -2,14 +2,13 @@
 
 import { useEffect, useState, useCallback, useRef, use } from "react";
 import { useRouter } from "next/navigation";
-import { subscribeToRoom, setRoom, deleteRoom, registerPresence } from "@/lib/firebase";
+import { subscribeToRoom, setRoom, deleteRoom, registerPresence, clearPresence, subscribeToPresence } from "@/lib/firebase";
 import {
   type GameState,
   playCard,
   startGame,
   addPlayer,
   removePlayer,
-  rejoinPlayer,
   getValidPositions,
   hasPlayableCard,
   replaceDeadCards,
@@ -54,6 +53,7 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
   const [joining, setJoining] = useState(false);
   const [soundOn, setSoundOn] = useState(() => isSoundEnabled());
   const [boardFlipped, setBoardFlipped] = useState(() => getStoredFlip());
+  const [connectedPlayers, setConnectedPlayers] = useState<Set<string>>(() => new Set());
 
   // Track previous values for change detection
   const prevTurnRef = useRef<number | null>(null);
@@ -65,33 +65,18 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
     const unsubscribe = subscribeToRoom(roomId, (gameState) => {
       setState(gameState);
 
-      if (gameState && !joining) {
-        const existingPlayer = gameState.players[playerId];
-
-        // Rejoin: player exists but disconnected — reconnect them
-        if (existingPlayer && !existingPlayer.connected && gameState.phase !== "waiting") {
+      // Auto-join: player not in game, lobby phase
+      if (gameState && !joining && !gameState.players[playerId] && gameState.phase === "waiting") {
+        const name = getPlayerName();
+        const teamCount = gameState.teams ? Object.keys(gameState.teams).length : 0;
+        const maxPlayers = getMaxPlayers(gameState.mode, teamCount);
+        if (name && Object.keys(gameState.players).length < maxPlayers) {
           setJoining(true);
           try {
-            const updated = rejoinPlayer(gameState, playerId);
+            const updated = addPlayer(gameState, playerId, name);
             setRoom(roomId, updated).finally(() => setJoining(false));
           } catch {
             setJoining(false);
-          }
-        }
-
-        // Auto-join: player not in game, lobby phase
-        if (!existingPlayer && gameState.phase === "waiting") {
-          const name = getPlayerName();
-          const teamCount = gameState.teams ? Object.keys(gameState.teams).length : 0;
-          const maxPlayers = getMaxPlayers(gameState.mode, teamCount);
-          if (name && Object.keys(gameState.players).length < maxPlayers) {
-            setJoining(true);
-            try {
-              const updated = addPlayer(gameState, playerId, name);
-              setRoom(roomId, updated).finally(() => setJoining(false));
-            } catch {
-              setJoining(false);
-            }
           }
         }
       }
@@ -99,6 +84,12 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
 
     return unsubscribe;
   }, [roomId, playerId, joining]);
+
+  // Subscribe to presence (separate from game state — not affected by setRoom)
+  useEffect(() => {
+    const unsubscribe = subscribeToPresence(roomId, setConnectedPlayers);
+    return unsubscribe;
+  }, [roomId]);
 
   // Presence: register onDisconnect so Firebase marks player disconnected on tab/app close
   const presenceCleanupRef = useRef<(() => void) | null>(null);
@@ -198,12 +189,15 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
   }, [isMyTurn, turnStartedAt, turnTimeLimit, playerId, roomId]);
 
   // Auto-play for disconnected players instantly (host's client handles this)
+  // Uses presence data (separate from game state) to detect disconnection
+  const connectedPlayersRef = useRef(connectedPlayers);
+  connectedPlayersRef.current = connectedPlayers;
+
   useEffect(() => {
     if (!state || state.phase !== "playing" || state.hostId !== playerId) return;
 
-    const currentPlayer = state.playerOrder[state.currentTurn];
-    const player = state.players[currentPlayer];
-    if (!player || player.connected) return;
+    const currentTurnPlayerId2 = state.playerOrder[state.currentTurn];
+    if (!currentTurnPlayerId2 || connectedPlayers.has(currentTurnPlayerId2)) return;
 
     // Disconnected player's turn — auto-play after brief delay to avoid race
     if (autoPlayingRef.current) return;
@@ -219,8 +213,7 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
       }
 
       const dcPlayerId = currentState.playerOrder[currentState.currentTurn];
-      const dcPlayer = currentState.players[dcPlayerId];
-      if (!dcPlayer || dcPlayer.connected) {
+      if (!dcPlayerId || connectedPlayersRef.current.has(dcPlayerId)) {
         autoPlayingRef.current = false;
         return;
       }
@@ -242,7 +235,7 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
     }, 1500);
 
     return () => clearTimeout(timeout);
-  }, [state, playerId, roomId]);
+  }, [state, playerId, roomId, connectedPlayers]);
 
   // Tick-tock countdown sound when <=15 seconds remain (current player's turn only)
   useEffect(() => {
@@ -357,10 +350,14 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
 
   // Leave game — remove player from state, then navigate home
   const handleLeave = useCallback(async () => {
+    // Cancel onDisconnect handler and clear presence
+    presenceCleanupRef.current?.();
+    presenceCleanupRef.current = null;
+    clearPresence(roomId, playerId);
+
     if (state) {
       const updated = removePlayer(state, playerId);
       if (updated === null) {
-        // No players left — delete the room
         await deleteRoom(roomId).catch(() => {});
       } else {
         await setRoom(roomId, updated).catch(() => {});

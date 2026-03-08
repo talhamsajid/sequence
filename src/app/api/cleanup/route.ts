@@ -40,6 +40,7 @@ export async function GET(request: Request) {
     fetch(`${DB_URL}/games/${roomId}.json`, { method: "DELETE" }),
     fetch(`${DB_URL}/voice/${roomId}.json`, { method: "DELETE" }),
     fetch(`${DB_URL}/chat/${roomId}.json`, { method: "DELETE" }),
+    fetch(`${DB_URL}/presence/${roomId}.json`, { method: "DELETE" }),
   ]);
 
   await Promise.allSettled(deletions);

@@ -139,28 +139,57 @@ export function subscribeToRoom(
 }
 
 /**
- * Register presence for a player. Sets connected=true now,
- * and schedules connected=false via Firebase onDisconnect
- * (fires server-side when the client drops — tab close, app kill, network loss).
+ * Register presence at a SEPARATE path (presence/{roomId}/{playerId}).
+ * Uses onDisconnect to auto-clear when client drops (tab close, app kill, network loss).
+ * Stored outside game state so setRoom() can never overwrite it.
  * Returns a cleanup function to cancel the onDisconnect handler.
  */
 export function registerPresence(
   roomId: string,
   playerId: string,
 ): () => void {
-  const connectedRef = ref(getDb(), `games/${roomId}/players/${playerId}/connected`);
+  const presenceRef = ref(getDb(), `presence/${roomId}/${playerId}`);
 
   // Mark connected now
-  set(connectedRef, true).catch(() => {});
+  set(presenceRef, true).catch(() => {});
 
-  // When client disconnects, Firebase server sets connected=false
-  const disconnectRef = onDisconnect(connectedRef);
-  disconnectRef.set(false).catch(() => {});
+  // When client disconnects, Firebase server removes the entry
+  const disconnectRef = onDisconnect(presenceRef);
+  disconnectRef.remove().catch(() => {});
 
-  // Return cleanup that cancels the onDisconnect (e.g. when leaving explicitly)
+  // Return cleanup that cancels the onDisconnect
   return () => {
     disconnectRef.cancel().catch(() => {});
   };
+}
+
+/**
+ * Explicitly mark a player as disconnected (e.g. when they click Leave).
+ */
+export function clearPresence(roomId: string, playerId: string): void {
+  const presenceRef = ref(getDb(), `presence/${roomId}/${playerId}`);
+  remove(presenceRef).catch(() => {});
+}
+
+/**
+ * Subscribe to presence data for a room.
+ * Returns a map of playerId -> true for connected players.
+ */
+export function subscribeToPresence(
+  roomId: string,
+  callback: (connected: Set<string>) => void,
+): () => void {
+  const presenceRef = ref(getDb(), `presence/${roomId}`);
+  return onValue(presenceRef, (snapshot) => {
+    const data = snapshot.val() as Record<string, boolean> | null;
+    const connected = new Set<string>();
+    if (data) {
+      for (const [pid, val] of Object.entries(data)) {
+        if (val) connected.add(pid);
+      }
+    }
+    callback(connected);
+  });
 }
 
 export async function deleteRoom(roomId: string): Promise<void> {
@@ -169,5 +198,6 @@ export async function deleteRoom(roomId: string): Promise<void> {
     remove(gameRef(roomId)),
     remove(ref(db, `voice/${roomId}`)),
     remove(ref(db, `chat/${roomId}`)),
+    remove(ref(db, `presence/${roomId}`)),
   ]);
 }
