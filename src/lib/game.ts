@@ -434,13 +434,79 @@ export function playCard(
       };
     }
 
-    // Advance turn (classic mode — no skipping needed, hands always refill from deck)
-    const nextTurn = (state.currentTurn + 1) % state.playerOrder.length;
+    // Advance turn — skip players who have no playable cards and can't draw replacements
+    let nextTurn = (state.currentTurn + 1) % state.playerOrder.length;
+    let advancedPlayers = newPlayers;
+    let advancedDeckIndex = newDeckIndex;
+
+    // Try replacing dead cards for next player, then skip if still stuck
+    let skips = 0;
+    while (skips < state.playerOrder.length) {
+      const nextPid = state.playerOrder[nextTurn];
+      const checkState: GameState = {
+        ...state,
+        players: advancedPlayers,
+        chips: newChips,
+        sequences: newSequences,
+        deckIndex: advancedDeckIndex,
+      };
+
+      if (hasPlayableCard(checkState, nextPid)) break;
+
+      // Try to replace dead cards from deck
+      const replaced = replaceDeadCards(checkState, nextPid);
+      advancedPlayers = replaced.players;
+      advancedDeckIndex = replaced.deckIndex;
+
+      const recheckState: GameState = { ...checkState, players: advancedPlayers, deckIndex: advancedDeckIndex };
+      if (hasPlayableCard(recheckState, nextPid)) break;
+
+      // Still stuck — discard unplayable cards and skip
+      const stuckPlayer = advancedPlayers[nextPid];
+      const playableHand = stuckPlayer.hand.filter(
+        (c) => getValidPositions(recheckState, c).length > 0
+      );
+      advancedPlayers = {
+        ...advancedPlayers,
+        [nextPid]: { ...stuckPlayer, hand: playableHand },
+      };
+
+      nextTurn = (nextTurn + 1) % state.playerOrder.length;
+      skips++;
+    }
+
+    // If every player is stuck, end the game
+    if (skips >= state.playerOrder.length) {
+      const result = determineWinner(newSequences, advancedPlayers, state);
+      const historyEntry: GameHistoryEntry = {
+        gameNumber: (state.gameHistory?.length ?? 0) + 1,
+        winnerId: result.winnerId,
+        winnerLabel: result.winnerLabel,
+        scores: result.scoreDetails,
+        timestamp: Date.now(),
+      };
+
+      return {
+        ...state,
+        players: advancedPlayers,
+        chips: newChips,
+        deckIndex: advancedDeckIndex,
+        sequences: newSequences,
+        phase: "finished",
+        winner: result.winnerId,
+        winnerLabel: result.winnerLabel,
+        scores: result.scores,
+        lastMove: { row, col, card, playerId },
+        turnStartedAt: null,
+        gameHistory: [...(state.gameHistory ?? []), historyEntry],
+      };
+    }
+
     return {
       ...state,
-      players: newPlayers,
+      players: advancedPlayers,
       chips: newChips,
-      deckIndex: newDeckIndex,
+      deckIndex: advancedDeckIndex,
       currentTurn: nextTurn,
       sequences: newSequences,
       phase: "playing",

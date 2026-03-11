@@ -169,17 +169,26 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
         const move = getRandomValidMove(currentState, playerId);
         if (move) {
           try {
-            let newState = playCard(currentState, playerId, move.cardIndex, move.row, move.col);
-
-            const nextPlayerId = newState.playerOrder[newState.currentTurn];
-            if (newState.phase === "playing" && !hasPlayableCard(newState, nextPlayerId)) {
-              newState = replaceDeadCards(newState, nextPlayerId);
-            }
-
+            const newState = playCard(currentState, playerId, move.cardIndex, move.row, move.col);
             await setRoom(roomId, newState);
             setSelectedCard(null);
           } catch {
             // Move failed — state may have changed; next tick will re-evaluate
+          }
+        } else {
+          // No valid move — skip turn by advancing to next player
+          // playCard's skip logic handles this, but we need a manual advance here
+          try {
+            const nextTurn = (currentState.currentTurn + 1) % currentState.playerOrder.length;
+            await setRoom(roomId, {
+              ...currentState,
+              currentTurn: nextTurn,
+              turnStartedAt: Date.now(),
+              lastActivity: Date.now(),
+            });
+            setSelectedCard(null);
+          } catch {
+            // State may have changed
           }
         }
         autoPlayingRef.current = false;
@@ -236,12 +245,21 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
       const move = getRandomValidMove(currentState, dcPlayerId);
       if (move) {
         try {
-          let newState = playCard(currentState, dcPlayerId, move.cardIndex, move.row, move.col);
-          const nextPlayerId = newState.playerOrder[newState.currentTurn];
-          if (newState.phase === "playing" && !hasPlayableCard(newState, nextPlayerId)) {
-            newState = replaceDeadCards(newState, nextPlayerId);
-          }
+          const newState = playCard(currentState, dcPlayerId, move.cardIndex, move.row, move.col);
           await setRoom(roomId, newState);
+        } catch {
+          // State may have changed
+        }
+      } else {
+        // No valid move — skip turn
+        try {
+          const nextTurn = (currentState.currentTurn + 1) % currentState.playerOrder.length;
+          await setRoom(roomId, {
+            ...currentState,
+            currentTurn: nextTurn,
+            turnStartedAt: Date.now(),
+            lastActivity: Date.now(),
+          });
         } catch {
           // State may have changed
         }
@@ -277,19 +295,13 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
       const card = player?.hand?.[selectedCard];
 
       try {
-        let newState = playCard(state, playerId, selectedCard, row, col);
+        const newState = playCard(state, playerId, selectedCard, row, col);
 
         // Play appropriate sound
         if (card && isOneEyedJack(card)) {
           removeChipSound();
         } else {
           playChipSound();
-        }
-
-        // Check for dead cards for next player
-        const nextPlayerId = newState.playerOrder[newState.currentTurn];
-        if (newState.phase === "playing" && !hasPlayableCard(newState, nextPlayerId)) {
-          newState = replaceDeadCards(newState, nextPlayerId);
         }
 
         await setRoom(roomId, newState);
@@ -533,7 +545,21 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
       </div>
 
       {/* Hand */}
-      <div className="bg-white/10 backdrop-blur-sm border-t border-white/10 shrink-0" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
+      <div
+        className={`backdrop-blur-sm border-t shrink-0 transition-all duration-500 ${
+          isMyTurn
+            ? "bg-white/15 border-emerald-400/50 shadow-[0_-4px_20px_rgba(52,211,153,0.15)]"
+            : "bg-white/10 border-white/10"
+        }`}
+        style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+      >
+        {isMyTurn && (
+          <div className="text-center pt-1.5 pb-0">
+            <span className="text-[10px] sm:text-xs font-semibold text-emerald-400 tracking-wide uppercase animate-pulse">
+              Your turn — pick a card
+            </span>
+          </div>
+        )}
         <PlayerHand
           hand={hand}
           selectedIndex={selectedCard}
