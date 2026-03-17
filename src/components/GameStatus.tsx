@@ -14,6 +14,7 @@ interface GameStatusProps {
   onLeave?: () => void;
   boardFlipped?: boolean;
   onToggleFlip?: () => void;
+  connectedPlayers?: Set<string>;
 }
 
 function useTimeRemaining(turnStartedAt: number | null, turnTimeLimit: number, phase: string): number {
@@ -61,6 +62,7 @@ export function GameStatus({
   onLeave,
   boardFlipped,
   onToggleFlip,
+  connectedPlayers,
 }: GameStatusProps) {
   const currentPlayerId = state.playerOrder[state.currentTurn];
   const isMyTurn = currentPlayerId === playerId;
@@ -105,7 +107,14 @@ export function GameStatus({
               >
                 <div className={cn("w-2.5 h-2.5 rounded-full shrink-0", colorDot[team.color])} />
                 <span className="text-sm">
-                  {team.playerIds.map((pid) => getPlayerAvatar(pid)).join("")}
+                  {team.playerIds.map((pid) => {
+                    const isTeamMemberDc = connectedPlayers && connectedPlayers.size > 0 && !connectedPlayers.has(pid) && pid !== playerId;
+                    return (
+                      <span key={pid} className={cn(isTeamMemberDc && "opacity-40")}>
+                        {getPlayerAvatar(pid)}
+                      </span>
+                    );
+                  })}
                 </span>
                 <span className="text-white/70 text-[11px]">
                   {team.playerIds.includes(playerId) ? "You" : team.name}
@@ -118,6 +127,7 @@ export function GameStatus({
             const p = state.players[pid];
             if (!p) return null;
             const isCurrent = pid === currentPlayerId;
+            const isDisconnected = connectedPlayers && connectedPlayers.size > 0 && !connectedPlayers.has(pid) && pid !== playerId;
             return (
               <div
                 key={pid}
@@ -125,11 +135,16 @@ export function GameStatus({
                   "flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap shrink-0",
                   isCurrent ? "bg-white/15 ring-1.5" : "bg-white/5",
                   isCurrent && colorRing[p.color],
+                  isDisconnected && "opacity-50",
                 )}
               >
                 <span className="text-sm">{getPlayerAvatar(pid)}</span>
-                <div className={cn("w-2.5 h-2.5 rounded-full shrink-0", colorDot[p.color])} />
-                <span className="text-white/80 text-[11px]">
+                {isDisconnected ? (
+                  <div className="w-2.5 h-2.5 rounded-full shrink-0 bg-amber-500 animate-pulse" />
+                ) : (
+                  <div className={cn("w-2.5 h-2.5 rounded-full shrink-0", colorDot[p.color])} />
+                )}
+                <span className={cn("text-[11px]", isDisconnected ? "text-amber-400/80" : "text-white/80")}>
                   {pid === playerId ? "You" : p.name.split(" ")[0]}
                 </span>
               </div>

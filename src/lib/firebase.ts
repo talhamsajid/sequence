@@ -203,3 +203,16 @@ export async function deleteRoom(roomId: string): Promise<void> {
     remove(ref(db, `presence/${roomId}`)),
   ]);
 }
+
+/**
+ * Subscribe to Firebase connection state.
+ * Returns true when connected, false when disconnected.
+ */
+export function subscribeToConnectionState(
+  callback: (isConnected: boolean) => void
+): () => void {
+  const connectedRef = ref(getDb(), ".info/connected");
+  return onValue(connectedRef, (snapshot) => {
+    callback(snapshot.val() === true);
+  });
+}

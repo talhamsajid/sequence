@@ -112,3 +112,44 @@ export function timerTickSound(isEven: boolean): void {
   // Tick = higher pitch, tock = lower pitch (like a clock)
   playTone(isEven ? 1200 : 800, 40, "sine", 0.1);
 }
+
+/**
+ * One-Eyed Jack remove sound — dramatic descending boom with a shattering tail.
+ * Opens with a low sawtooth thud, followed by three falling tones that break
+ * apart like glass, giving the impression of destruction.
+ */
+export function jackRemoveSound(): void {
+  // Deep initial thud (sawtooth for harshness)
+  playToneAt(80, 300, 0, "sawtooth", 0.22);
+  // Impact body — square wave mid boom
+  playToneAt(140, 250, 0, "square", 0.14);
+  // Descending shattering tones
+  playToneAt(320, 180, 60, "sawtooth", 0.12);
+  playToneAt(220, 160, 130, "sawtooth", 0.10);
+  playToneAt(150, 200, 200, "sawtooth", 0.09);
+  // Final low rumble fade
+  playToneAt(60, 350, 80, "sine", 0.18);
+  playToneAt(45, 400, 200, "sine", 0.10);
+}
+
+/**
+ * Two-Eyed Jack wild sound — magical ascending sparkle with shimmer.
+ * Starts with a soft low tone that blossoms into a rising arpeggio,
+ * topped with high glittering overtones that decay into silence.
+ */
+export function jackWildSound(): void {
+  // Soft warm base
+  playToneAt(261, 300, 0, "sine", 0.10);
+  // Rising arpeggio (C4 → E4 → G4 → B4 → D5)
+  playToneAt(261, 150, 0, "triangle", 0.11);
+  playToneAt(329, 150, 100, "triangle", 0.11);
+  playToneAt(392, 150, 200, "triangle", 0.11);
+  playToneAt(493, 150, 300, "triangle", 0.12);
+  playToneAt(587, 160, 400, "triangle", 0.12);
+  // High shimmer overtones
+  playToneAt(1046, 200, 380, "sine", 0.07);
+  playToneAt(1318, 200, 440, "sine", 0.06);
+  playToneAt(1568, 220, 500, "sine", 0.05);
+  // Bright final chime
+  playToneAt(1174, 300, 560, "sine", 0.08);
+}

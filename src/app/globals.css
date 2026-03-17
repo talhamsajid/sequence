@@ -28,3 +28,94 @@ html, body {
   from { transform: translateY(100px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
 }
+
+/* ─── Jack Animation keyframes ──────────────────────────────────────── */
+
+/* Shockwave ring that expands outward on entry */
+@keyframes jackShockwave {
+  0%   { transform: scale(0.2); opacity: 0.8; }
+  60%  { opacity: 0.4; }
+  100% { transform: scale(2.8); opacity: 0; }
+}
+
+/* Pulsing glow halo for the outer ring during hold */
+@keyframes jackGlowPulse {
+  0%, 100% { opacity: 0.35; transform: scale(1); }
+  50%       { opacity: 0.65; transform: scale(1.06); }
+}
+
+/* Shimmer sweep across the wild card */
+@keyframes jackShimmer {
+  0%   { transform: translateX(-180%) skewX(-20deg); }
+  100% { transform: translateX(280%) skewX(-20deg); }
+}
+
+/* Red heartbeat flash on the remove card */
+@keyframes jackPulseRed {
+  0%, 100% { opacity: 0; }
+  45%, 55% { opacity: 0.28; }
+}
+
+/* Rotating sparkle ring for wild */
+@keyframes jackSpinRing {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* Individual particle orbit-out */
+@keyframes jackParticleBurst {
+  0%   { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -50%) translate(var(--dx), var(--dy)) scale(0); opacity: 0; }
+}
+
+/* Label pop-in with bounce */
+@keyframes jackLabelPop {
+  0%   { transform: translateX(-50%) scale(0.3); opacity: 0; }
+  60%  { transform: translateX(-50%) scale(1.15); opacity: 1; }
+  80%  { transform: translateX(-50%) scale(0.95); }
+  100% { transform: translateX(-50%) scale(1); opacity: 1; }
+}
+
+/* Label glow flicker */
+@keyframes jackLabelGlow {
+  0%, 100% { text-shadow-opacity: 1; opacity: 1; }
+  50%       { opacity: 0.85; }
+}
+
+/* Screen shake for remove jack */
+@keyframes jackShake {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  15%  { transform: translate(-4px, 2px) rotate(-1deg); }
+  30%  { transform: translate(4px, -2px) rotate(1deg); }
+  45%  { transform: translate(-3px, 3px) rotate(-0.5deg); }
+  60%  { transform: translate(3px, -1px) rotate(0.5deg); }
+  75%  { transform: translate(-2px, 2px) rotate(0deg); }
+  90%  { transform: translate(2px, -1px) rotate(0deg); }
+}
+
+/* Card entry: spring scale from nothing */
+@keyframes jackCardEnter {
+  0%   { transform: scale(0.05) rotate(-18deg); opacity: 0; }
+  55%  { transform: scale(1.12) rotate(2deg); opacity: 1; }
+  75%  { transform: scale(0.96) rotate(-1deg); }
+  90%  { transform: scale(1.03) rotate(0.5deg); }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+/* Card exit: shrink away */
+@keyframes jackCardExit {
+  0%   { transform: scale(1) rotate(0deg); opacity: 1; }
+  100% { transform: scale(0.7) rotate(8deg); opacity: 0; }
+}
+
+/* Backdrop fade in */
+@keyframes jackBackdropIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Backdrop fade out */
+@keyframes jackBackdropOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
