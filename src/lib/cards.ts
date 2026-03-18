@@ -30,3 +30,32 @@ export function getCardImagePath(card: string): string {
 }
 
 export const CARD_BACK_PATH = "/cards/back.svg";
+
+/** All unique card image paths (52 face cards + 1 back). */
+const ALL_CARD_PATHS: string[] = (() => {
+  const paths: string[] = [];
+  for (const [, rank] of Object.entries(RANK_MAP)) {
+    for (const [, suit] of Object.entries(SUIT_MAP)) {
+      paths.push(`/cards/${rank}_of_${suit}.svg`);
+    }
+  }
+  paths.push(CARD_BACK_PATH);
+  return paths;
+})();
+
+let _preloaded = false;
+
+/**
+ * Preload all card images into browser cache.
+ * Call once on game page mount — subsequent renders use cached images instantly.
+ * Uses Image() objects so the browser fetches and caches without DOM insertion.
+ */
+export function preloadCardImages(): void {
+  if (_preloaded || typeof window === "undefined") return;
+  _preloaded = true;
+
+  for (const src of ALL_CARD_PATHS) {
+    const img = new Image();
+    img.src = src;
+  }
+}

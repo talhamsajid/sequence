@@ -15,6 +15,7 @@ import {
   getRandomValidMove,
 } from "@/lib/game";
 import { isOneEyedJack, isTwoEyedJack } from "@/lib/board";
+import { preloadCardImages } from "@/lib/cards";
 import { getPlayerId, getPlayerName, setPlayerName } from "@/lib/utils";
 import { getMaxPlayers, switchPlayerTeam, getPlayerTeamColor } from "@/lib/teams";
 import type { PlayerColor } from "@/lib/game";
@@ -71,6 +72,9 @@ export default function GamePage({ params }: { params: Promise<{ roomId: string 
   const prevPhaseRef = useRef<string | null>(null);
   const prevLastMoveRef = useRef<GameState["lastMove"]>(null);
   const prevPlayersRef = useRef<Record<string, { name: string; color: string; connected: boolean }>>({});
+
+  // Preload all card images into browser cache on mount
+  useEffect(() => { preloadCardImages(); }, []);
 
   // Subscribe to game state
   useEffect(() => {
