@@ -1,11 +1,14 @@
 import React from "react";
 import { View, StyleSheet } from "react-native";
 import Animated, {
+  FadeIn,
+  BounceIn,
+  ZoomIn,
   useAnimatedStyle,
-  withSpring,
+  withRepeat,
   withSequence,
   withTiming,
-  FadeIn,
+  withDelay,
 } from "react-native-reanimated";
 import type { PlayerColor } from "@sequence/game-logic";
 import { chipColorMap, colors } from "../constants/theme";
@@ -22,9 +25,29 @@ export function Chip({ color, size, isNew = false, isInSequence = false }: ChipP
   const innerSize = size * 0.7;
   const dotSize = size * 0.25;
 
+  // Drop + bounce animation for newly placed chips
+  const entering = isNew
+    ? BounceIn.duration(400).damping(12)
+    : undefined;
+
+  // Pulsing glow for sequence chips
+  const glowStyle = useAnimatedStyle(() => {
+    if (!isInSequence) return { opacity: 0 };
+    return {
+      opacity: withRepeat(
+        withSequence(
+          withTiming(0.8, { duration: 800 }),
+          withTiming(0.3, { duration: 800 }),
+        ),
+        -1,
+        true,
+      ),
+    };
+  });
+
   return (
     <Animated.View
-      entering={isNew ? FadeIn.duration(200) : undefined}
+      entering={entering}
       style={[
         styles.container,
         {
@@ -61,17 +84,18 @@ export function Chip({ color, size, isNew = false, isInSequence = false }: ChipP
           },
         ]}
       />
-      {/* Sequence glow */}
+      {/* Sequence glow ring */}
       {isInSequence && (
-        <View
+        <Animated.View
           style={[
             styles.glow,
             {
-              width: size + 4,
-              height: size + 4,
-              borderRadius: (size + 4) / 2,
+              width: size + 6,
+              height: size + 6,
+              borderRadius: (size + 6) / 2,
               borderColor: colors.goldBright,
             },
+            glowStyle,
           ]}
         />
       )}
@@ -83,7 +107,6 @@ const styles = StyleSheet.create({
   container: {
     alignItems: "center",
     justifyContent: "center",
-    // Subtle shadow for depth
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.4,
@@ -99,7 +122,6 @@ const styles = StyleSheet.create({
   },
   glow: {
     position: "absolute",
-    borderWidth: 1.5,
-    opacity: 0.6,
+    borderWidth: 2,
   },
 });
