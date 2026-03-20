@@ -17,6 +17,13 @@ interface ChipProps {
   isInSequence?: boolean;
 }
 
+// Sequence ring glow — module-level constant (no re-creation per render)
+const sequenceRingColors: Record<string, string> = {
+  red: "rgba(254,202,202,0.7)", // red-200
+  blue: "rgba(191,219,254,0.7)", // blue-200
+  green: "rgba(167,243,208,0.7)", // emerald-200
+};
+
 export function Chip({ color, size, isNew = false, isInSequence = false }: ChipProps) {
   const outerColor = chipColorMap[color] ?? "#dc2626";
   const innerColor = chipInnerColorMap[color] ?? "#ef4444";
@@ -24,13 +31,6 @@ export function Chip({ color, size, isNew = false, isInSequence = false }: ChipP
   const innerSize = size * 0.7;
 
   const entering = isNew ? BounceIn.duration(400).damping(12) : undefined;
-
-  // Sequence ring glow
-  const sequenceRingColors: Record<string, string> = {
-    red: "rgba(254,202,202,0.7)", // red-200
-    blue: "rgba(191,219,254,0.7)", // blue-200
-    green: "rgba(167,243,208,0.7)", // emerald-200
-  };
 
   const glowStyle = useAnimatedStyle(() => {
     if (!isInSequence) return { opacity: 0 };

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import {
   View,
   Text,
@@ -68,9 +68,49 @@ import { colors, spacing, borderRadius } from "../../src/constants/theme";
 
 const FLIP_STORAGE_KEY = "sequence_board_flipped";
 
-function getStoredFlipSync(): boolean {
-  // We load async in useEffect and default to false
-  return false;
+/**
+ * Execute an auto-play move for `targetPlayerId`.
+ * Finds a random valid move and plays it, or skips the turn.
+ * Returns true if an action was taken.
+ */
+async function executeAutoPlay(
+  currentState: GameState,
+  targetPlayerId: string,
+  roomId: string,
+): Promise<boolean> {
+  if (currentState.phase !== "playing") return false;
+
+  const move = getRandomValidMove(currentState, targetPlayerId);
+  if (move) {
+    try {
+      const newState = playCard(
+        currentState,
+        targetPlayerId,
+        move.cardIndex,
+        move.row,
+        move.col,
+      );
+      await setRoom(roomId, newState);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // No valid move — skip turn
+  try {
+    const nextTurn =
+      (currentState.currentTurn + 1) % currentState.playerOrder.length;
+    await setRoom(roomId, {
+      ...currentState,
+      currentTurn: nextTurn,
+      turnStartedAt: Date.now(),
+      lastActivity: Date.now(),
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -113,6 +153,8 @@ export default function GamePage() {
   const stateRef = useRef<GameState | null>(null);
   stateRef.current = state;
   const presenceCleanupRef = useRef<(() => void) | null>(null);
+  const joiningRef = useRef(false);
+  joiningRef.current = joining;
   const connectedPlayersRef = useRef(connectedPlayers);
   connectedPlayersRef.current = connectedPlayers;
 
@@ -135,7 +177,7 @@ export default function GamePage() {
       // Auto-join: player not in game, lobby phase
       if (
         gameState &&
-        !joining &&
+        !joiningRef.current &&
         !gameState.players[playerId] &&
         gameState.phase === "waiting"
       ) {
@@ -160,7 +202,7 @@ export default function GamePage() {
     });
 
     return unsubscribe;
-  }, [roomId, playerId, joining]);
+  }, [roomId, playerId]);
 
   // Subscribe to presence
   useEffect(() => {
@@ -355,41 +397,9 @@ export default function GamePage() {
         clearInterval(interval);
 
         const currentState = stateRef.current;
-        if (!currentState || currentState.phase !== "playing") {
-          autoPlayingRef.current = false;
-          return;
-        }
-
-        const move = getRandomValidMove(currentState, playerId);
-        if (move) {
-          try {
-            const newState = playCard(
-              currentState,
-              playerId,
-              move.cardIndex,
-              move.row,
-              move.col
-            );
-            await setRoom(roomId, newState);
-            setSelectedCard(null);
-          } catch {
-            // Move failed
-          }
-        } else {
-          try {
-            const nextTurn =
-              (currentState.currentTurn + 1) %
-              currentState.playerOrder.length;
-            await setRoom(roomId, {
-              ...currentState,
-              currentTurn: nextTurn,
-              turnStartedAt: Date.now(),
-              lastActivity: Date.now(),
-            });
-            setSelectedCard(null);
-          } catch {
-            // State changed
-          }
+        if (currentState) {
+          await executeAutoPlay(currentState, playerId, roomId);
+          setSelectedCard(null);
         }
         autoPlayingRef.current = false;
       }
@@ -442,35 +452,7 @@ export default function GamePage() {
         return;
       }
 
-      const move = getRandomValidMove(currentState, pid);
-      if (move) {
-        try {
-          const newState = playCard(
-            currentState,
-            pid,
-            move.cardIndex,
-            move.row,
-            move.col
-          );
-          await setRoom(roomId, newState);
-        } catch {
-          // State changed
-        }
-      } else {
-        try {
-          const nextTurn =
-            (currentState.currentTurn + 1) %
-            currentState.playerOrder.length;
-          await setRoom(roomId, {
-            ...currentState,
-            currentTurn: nextTurn,
-            turnStartedAt: Date.now(),
-            lastActivity: Date.now(),
-          });
-        } catch {
-          // State changed
-        }
-      }
+      await executeAutoPlay(currentState, pid, roomId);
       autoPlayingRef.current = false;
     }, 15000);
 
@@ -500,15 +482,20 @@ export default function GamePage() {
   // Handlers
   // -----------------------------------------------------------------------
 
+  const selectedCardRef = useRef<number | null>(null);
+  selectedCardRef.current = selectedCard;
+
   const handleCellClick = useCallback(
     async (row: number, col: number) => {
-      if (!state || selectedCard === null || !roomId) return;
+      const currentState = stateRef.current;
+      const currentSelectedCard = selectedCardRef.current;
+      if (!currentState || currentSelectedCard === null || !roomId) return;
 
-      const player = state.players[playerId];
-      const card = player?.hand?.[selectedCard];
+      const player = currentState.players[playerId];
+      const card = player?.hand?.[currentSelectedCard];
 
       try {
-        const newState = playCard(state, playerId, selectedCard, row, col);
+        const newState = playCard(currentState, playerId, currentSelectedCard, row, col);
 
         // Play appropriate sound
         if (card && isOneEyedJack(card)) {
@@ -525,7 +512,7 @@ export default function GamePage() {
         setTimeout(() => setError(null), 2000);
       }
     },
-    [state, selectedCard, playerId, roomId]
+    [playerId, roomId]
   );
 
   const handleStart = useCallback(async () => {
@@ -735,12 +722,15 @@ export default function GamePage() {
   const player = state.players[playerId];
   const hand = player?.hand ?? [];
 
-  const validCardIndices = new Set<number>();
-  hand.forEach((card, i) => {
-    if (getValidPositions(state, card).length > 0) {
-      validCardIndices.add(i);
-    }
-  });
+  const validCardIndices = useMemo(() => {
+    const indices = new Set<number>();
+    hand.forEach((card, i) => {
+      if (getValidPositions(state, card).length > 0) {
+        indices.add(i);
+      }
+    });
+    return indices;
+  }, [state.chips, state.sequences, hand, state.currentTurn]);
 
   return (
     <SafeAreaView style={styles.gameContainer} edges={["top"]}>

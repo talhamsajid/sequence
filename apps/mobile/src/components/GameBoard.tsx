@@ -54,23 +54,19 @@ export function GameBoard({
     return new Set(positions.map(([r, c]) => `${r},${c}`));
   }, [selectedCard, state, isMyTurn]);
 
-  // Sequence cell tracking
-  const sequenceCells = useMemo(() => new Set<string>(), []);
-  const sequenceCellColors = useMemo(() => {
-    const map = new Map<string, string>();
+  // Sequence cell tracking (single memo, no mutation)
+  const { sequenceCells, sequenceCellColors } = useMemo(() => {
     const cells = new Set<string>();
+    const colorMap = new Map<string, string>();
     for (const seq of state.sequences) {
       for (const [r, c] of seq.cells) {
         const k = `${r},${c}`;
         cells.add(k);
-        map.set(k, seq.color);
+        colorMap.set(k, seq.color);
       }
     }
-    // Mutate the ref set (memoized container)
-    sequenceCells.clear();
-    cells.forEach((k) => sequenceCells.add(k));
-    return map;
-  }, [state.sequences, sequenceCells]);
+    return { sequenceCells: cells, sequenceCellColors: colorMap };
+  }, [state.sequences]);
 
   // Sequence lines
   const sequenceLines = state.sequences.map((seq) => {
@@ -103,6 +99,8 @@ export function GameBoard({
                 cell={cell}
                 chip={state.chips?.[r]?.[c] ?? null}
                 size={cellWidth}
+                row={r}
+                col={c}
                 isHighlighted={isValid}
                 isLastMove={
                   state.lastMove?.row === r && state.lastMove?.col === c
@@ -111,7 +109,7 @@ export function GameBoard({
                 sequenceColor={
                   (sequenceCellColors.get(key) as PlayerColor) ?? null
                 }
-                onClick={() => onCellClick(r, c)}
+                onCellClick={onCellClick}
                 disabled={!isValid}
               />
             );

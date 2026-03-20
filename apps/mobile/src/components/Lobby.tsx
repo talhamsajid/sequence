@@ -18,7 +18,7 @@ import {
   getPlayerTeam,
   getPlayerAvatar,
 } from "@sequence/game-logic";
-import { colors, spacing, borderRadius, chipColorMap } from "../constants/theme";
+import { colors, spacing, borderRadius, chipColorMap, colorDotMap, colorRingMap, APP_URL } from "../constants/theme";
 
 interface LobbyProps {
   state: GameState;
@@ -31,18 +31,6 @@ interface LobbyProps {
 }
 
 const ALL_COLORS: PlayerColor[] = ["red", "blue", "green"];
-
-const colorDotMap: Record<PlayerColor, string> = {
-  red: "#ef4444",
-  blue: "#3b82f6",
-  green: "#22c55e",
-};
-
-const colorRingMap: Record<PlayerColor, string> = {
-  red: "#ef4444",
-  blue: "#3b82f6",
-  green: "#22c55e",
-};
 
 export function Lobby({
   state,
@@ -71,7 +59,7 @@ export function Lobby({
   };
 
   const shareGame = async () => {
-    const gameUrl = `https://sequence-lilac.vercel.app/game/${roomCode}`;
+    const gameUrl = `${APP_URL}/game/${roomCode}`;
     try {
       await Share.share({
         message: `Join my Sequence game! Room code: ${roomCode}\n${gameUrl}`,

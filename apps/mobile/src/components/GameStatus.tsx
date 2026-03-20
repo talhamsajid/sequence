@@ -7,7 +7,7 @@ import {
   getPlayerTeam,
   getPlayerAvatar,
 } from "@sequence/game-logic";
-import { colors, spacing, borderRadius } from "../constants/theme";
+import { colors, spacing, borderRadius, colorDotMap, colorRingMap } from "../constants/theme";
 
 interface GameStatusProps {
   state: GameState;
@@ -51,18 +51,6 @@ function useTimeRemaining(
 
   return remaining;
 }
-
-const colorDotMap: Record<PlayerColor, string> = {
-  red: "#ef4444",
-  blue: "#3b82f6",
-  green: "#22c55e",
-};
-
-const colorRingMap: Record<PlayerColor, string> = {
-  red: "#f87171",
-  blue: "#60a5fa",
-  green: "#4ade80",
-};
 
 export function GameStatus({
   state,

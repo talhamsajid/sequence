@@ -1,12 +1,11 @@
 import {
-  getDatabase,
   ref,
   push,
   onValue,
   query,
   limitToLast,
 } from "firebase/database";
-import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
+import { getDb } from "./firebase";
 
 export interface ChatMessage {
   id: string;
@@ -15,26 +14,6 @@ export interface ChatMessage {
   playerColor: string;
   text: string;
   timestamp: number;
-}
-
-// Re-use the same Firebase app instance that firebase.ts creates.
-// firebase/app deduplicates — getApps()[0] returns the singleton.
-const firebaseConfig = {
-  apiKey: "AIzaSyDnb6NWw0eAsatYE8HF11RcZ2LltyvbHXU",
-  authDomain: "sequence-game-online.firebaseapp.com",
-  databaseURL: "https://sequence-game-online-default-rtdb.firebaseio.com",
-  projectId: "sequence-game-online",
-  storageBucket: "sequence-game-online.firebasestorage.app",
-  messagingSenderId: "884344372722",
-  appId: "1:884344372722:web:e5017d48ca6f38a4e2bf6b",
-};
-
-function getApp(): FirebaseApp {
-  return getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-}
-
-function getDb() {
-  return getDatabase(getApp());
 }
 
 function chatRef(roomId: string) {

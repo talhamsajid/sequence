@@ -15,7 +15,6 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
-  Easing,
 } from "react-native-reanimated";
 import {
   sendMessage,
@@ -91,12 +90,16 @@ export function Chat({ roomId, playerId, playerName, playerColor }: ChatProps) {
     transform: [{ scale: badgeScale.value }],
   }));
 
+  // Ref to avoid re-subscribing when isOpen changes
+  const isOpenRef = useRef(isOpen);
+  isOpenRef.current = isOpen;
+
   // Subscribe to messages
   useEffect(() => {
     const unsubscribe = subscribeToChatMessages(roomId, (newMessages) => {
       setMessages(newMessages);
 
-      if (!isOpen && newMessages.length > lastSeenCountRef.current) {
+      if (!isOpenRef.current && newMessages.length > lastSeenCountRef.current) {
         const newOnes = newMessages
           .slice(lastSeenCountRef.current)
           .filter((m) => m.playerId !== playerId);
@@ -109,13 +112,13 @@ export function Chat({ roomId, playerId, playerName, playerColor }: ChatProps) {
         }
       }
 
-      if (isOpen) {
+      if (isOpenRef.current) {
         lastSeenCountRef.current = newMessages.length;
       }
     });
 
     return unsubscribe;
-  }, [roomId, playerId, isOpen, badgeScale]);
+  }, [roomId, playerId]);
 
   // Scroll to bottom when messages update or chat opens
   useEffect(() => {

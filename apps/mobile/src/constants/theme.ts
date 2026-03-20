@@ -132,3 +132,20 @@ export const chipLightColorMap: Record<string, string> = {
 };
 
 export type ChipColorKey = keyof typeof chipColorMap;
+
+/** Canonical color dot map — use everywhere players are shown by color. */
+export const colorDotMap: Record<string, string> = {
+  red: "#ef4444",
+  blue: "#3b82f6",
+  green: "#10b981", // emerald-500, consistent across all components
+};
+
+/** Canonical color ring map — lighter tints for active-state borders. */
+export const colorRingMap: Record<string, string> = {
+  red: "#f87171",
+  blue: "#60a5fa",
+  green: "#10b981", // emerald-500, consistent across all components
+};
+
+/** Production app URL — single source of truth. */
+export const APP_URL = "https://sequence-lilac.vercel.app";

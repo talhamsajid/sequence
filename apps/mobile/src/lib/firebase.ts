@@ -11,6 +11,7 @@ import {
   type Database,
 } from "firebase/database";
 import type { GameState, ChipGrid } from "@sequence/game-logic";
+import { firebaseConfig } from "./firebaseConfig";
 
 // Firebase RTDB strips null values and empty arrays.
 // This rehydrates the game state to ensure all fields have proper defaults.
@@ -82,20 +83,10 @@ function hydrateGameState(raw: Record<string, unknown>): GameState {
   };
 }
 
-const firebaseConfig = {
-  apiKey: "AIzaSyDnb6NWw0eAsatYE8HF11RcZ2LltyvbHXU",
-  authDomain: "sequence-game-online.firebaseapp.com",
-  databaseURL: "https://sequence-game-online-default-rtdb.firebaseio.com",
-  projectId: "sequence-game-online",
-  storageBucket: "sequence-game-online.firebasestorage.app",
-  messagingSenderId: "884344372722",
-  appId: "1:884344372722:web:e5017d48ca6f38a4e2bf6b",
-};
-
 let _app: FirebaseApp | null = null;
 let _db: Database | null = null;
 
-function getApp(): FirebaseApp {
+function getFirebaseApp(): FirebaseApp {
   if (!_app) {
     _app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
   }
@@ -104,10 +95,13 @@ function getApp(): FirebaseApp {
 
 function getDb(): Database {
   if (!_db) {
-    _db = getDatabase(getApp());
+    _db = getDatabase(getFirebaseApp());
   }
   return _db;
 }
+
+// Exported for modules that need the initialized app/db (e.g. chat.ts)
+export { getFirebaseApp, getDb };
 
 function gameRef(roomId: string) {
   return ref(getDb(), `games/${roomId}`);

@@ -32,7 +32,7 @@ function JackBadge({ card }: { card: Card }) {
   );
 }
 
-function HandCard({
+const HandCard = React.memo(function HandCard({
   card,
   index,
   isSelected,
@@ -130,7 +130,7 @@ function HandCard({
       )}
     </AnimatedPressable>
   );
-}
+});
 
 export function PlayerHand({
   hand,

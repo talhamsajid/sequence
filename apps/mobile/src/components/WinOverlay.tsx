@@ -6,7 +6,7 @@ import {
   type GameHistoryEntry,
   getPlayerTeam,
 } from "@sequence/game-logic";
-import { colors, spacing, borderRadius } from "../constants/theme";
+import { colors, spacing, borderRadius, colorDotMap } from "../constants/theme";
 
 interface WinOverlayProps {
   state: GameState;
@@ -14,12 +14,6 @@ interface WinOverlayProps {
   onPlayAgain: () => void;
   onLeave: () => void;
 }
-
-const colorDotMap: Record<string, string> = {
-  red: "#ef4444",
-  blue: "#3b82f6",
-  green: "#10b981",
-};
 
 function ScoreRow({
   name,

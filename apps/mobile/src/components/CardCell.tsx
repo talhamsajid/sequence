@@ -1,7 +1,6 @@
 import React, { memo } from "react";
 import { Pressable, View, Text, StyleSheet } from "react-native";
 import type { BoardCell, PlayerColor } from "@sequence/game-logic";
-import { cardDisplay } from "@sequence/game-logic";
 import { Chip } from "./Chip";
 import { getCardSvg } from "../constants/cards";
 import { colors, borderRadius } from "../constants/theme";
@@ -10,11 +9,13 @@ interface CardCellProps {
   cell: BoardCell;
   chip: PlayerColor | null;
   size: number;
+  row: number;
+  col: number;
   isHighlighted: boolean;
   isLastMove: boolean;
   isInSequence: boolean;
   sequenceColor: PlayerColor | null;
-  onClick: () => void;
+  onCellClick: (row: number, col: number) => void;
   disabled: boolean;
 }
 
@@ -39,11 +40,13 @@ function CardCellInner({
   cell,
   chip,
   size,
+  row,
+  col,
   isHighlighted,
   isLastMove,
   isInSequence,
   sequenceColor,
-  onClick,
+  onCellClick,
   disabled,
 }: CardCellProps) {
   if (cell === "FREE") {
@@ -55,7 +58,7 @@ function CardCellInner({
 
   return (
     <Pressable
-      onPress={onClick}
+      onPress={() => onCellClick(row, col)}
       disabled={disabled}
       style={[
         styles.cell,

@@ -273,20 +273,9 @@ export function JackAnimation({ card, type, onComplete }: JackAnimationProps) {
     return () => {
       for (const t of timers) clearTimeout(t);
     };
-  }, [
-    card,
-    type,
-    backdropOpacity,
-    cardScale,
-    cardOpacity,
-    labelOpacity,
-    labelScale,
-    ringScale,
-    ringOpacity,
-    shakeX,
-    sparkleRotation,
-    glowPulse,
-  ]);
+  // Shared values are stable refs — only re-run when card/type change
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [card, type]);
 
   // ALL hooks must be called unconditionally (Rules of Hooks)
   const backdropStyle = useAnimatedStyle(() => ({
