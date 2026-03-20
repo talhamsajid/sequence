@@ -1,47 +1,127 @@
-// Sound effects using expo-av
-// Uses pre-generated oscillator tones loaded as inline audio
+/**
+ * Sound effects for the Sequence mobile app.
+ *
+ * Since Web Audio API oscillators are not available in React Native,
+ * this module uses expo-haptics as the PRIMARY feedback mechanism and
+ * exposes the same function signatures as the web version.
+ *
+ * Audio tones can be layered in later by dropping .wav/.mp3 files into
+ * assets/sounds/ and loading them with expo-av Audio.Sound.
+ */
 
-import { Audio } from "expo-av";
+import * as Haptics from "expo-haptics";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
-let soundsLoaded = false;
-const sounds: Record<string, Audio.Sound> = {};
+const STORAGE_KEY = "sequence_sound_enabled";
 
-// Frequency-based tone generation (matching web's Web Audio API approach)
-// We create simple beep tones using expo-av's Sound.createAsync
-// For MVP, we use haptics primarily and add proper audio files later
+// In-memory cache — loaded once at init
+let _soundEnabled = true;
+let _initialized = false;
 
+/**
+ * Load persisted sound preference. Call once at app startup.
+ */
 export async function initSounds(): Promise<void> {
-  if (soundsLoaded) return;
+  if (_initialized) return;
   try {
-    await Audio.setAudioModeAsync({
-      playsInSilentModeIOS: false,
-      staysActiveInBackground: false,
-      shouldDuckAndroid: true,
-    });
-    soundsLoaded = true;
+    const stored = await AsyncStorage.getItem(STORAGE_KEY);
+    if (stored !== null) {
+      _soundEnabled = JSON.parse(stored) === true;
+    }
   } catch {
-    // Audio not available — haptics will carry the UX
+    // Fallback: keep default (enabled)
+  }
+  _initialized = true;
+}
+
+export function isSoundEnabled(): boolean {
+  return _soundEnabled;
+}
+
+export function setSoundEnabled(enabled: boolean): void {
+  _soundEnabled = enabled;
+  AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(enabled)).catch(() => {});
+}
+
+// ---------------------------------------------------------------------------
+// Haptic helpers (guarded by sound toggle)
+// ---------------------------------------------------------------------------
+
+function hapticImpact(style: Haptics.ImpactFeedbackStyle): void {
+  if (!_soundEnabled) return;
+  Haptics.impactAsync(style).catch(() => {});
+}
+
+function hapticNotification(type: Haptics.NotificationFeedbackType): void {
+  if (!_soundEnabled) return;
+  Haptics.notificationAsync(type).catch(() => {});
+}
+
+function hapticSelection(): void {
+  if (!_soundEnabled) return;
+  Haptics.selectionAsync().catch(() => {});
+}
+
+// ---------------------------------------------------------------------------
+// Public API — matches web function signatures
+// ---------------------------------------------------------------------------
+
+/** Short click/pop when placing a chip */
+export function playChipSound(): void {
+  hapticImpact(Haptics.ImpactFeedbackStyle.Medium);
+}
+
+/** Gentle two-tap chime when it becomes your turn */
+export function yourTurnSound(): void {
+  hapticNotification(Haptics.NotificationFeedbackType.Success);
+}
+
+/** Low thud when one-eyed Jack removes a chip */
+export function removeChipSound(): void {
+  hapticImpact(Haptics.ImpactFeedbackStyle.Heavy);
+}
+
+/** Rising haptic when a sequence is completed */
+export function sequenceSound(): void {
+  hapticNotification(Haptics.NotificationFeedbackType.Success);
+  // Double-tap feel for sequences
+  setTimeout(() => {
+    hapticImpact(Haptics.ImpactFeedbackStyle.Heavy);
+  }, 150);
+}
+
+/** Triumphant haptic pattern on win */
+export function winSound(): void {
+  hapticNotification(Haptics.NotificationFeedbackType.Success);
+  setTimeout(() => hapticImpact(Haptics.ImpactFeedbackStyle.Heavy), 200);
+  setTimeout(() => hapticNotification(Haptics.NotificationFeedbackType.Success), 400);
+}
+
+/** Tick-tock for timer countdown — alternates feel */
+export function timerTickSound(isEven: boolean): void {
+  if (isEven) {
+    hapticImpact(Haptics.ImpactFeedbackStyle.Light);
+  } else {
+    hapticSelection();
   }
 }
 
-// Placeholder — sounds will be added as audio files in Phase 4
-// For now, haptics provide all feedback
-export function playChipSound(): void {
-  // Will play chip placement sound
+/** One-Eyed Jack remove — dramatic heavy impact */
+export function jackRemoveSound(): void {
+  hapticImpact(Haptics.ImpactFeedbackStyle.Heavy);
+  setTimeout(() => hapticImpact(Haptics.ImpactFeedbackStyle.Heavy), 100);
+  setTimeout(() => hapticImpact(Haptics.ImpactFeedbackStyle.Medium), 250);
 }
 
-export function playSequenceSound(): void {
-  // Will play sequence completion fanfare
+/** Two-Eyed Jack wild — light sparkle pattern */
+export function jackWildSound(): void {
+  hapticImpact(Haptics.ImpactFeedbackStyle.Light);
+  setTimeout(() => hapticImpact(Haptics.ImpactFeedbackStyle.Light), 100);
+  setTimeout(() => hapticImpact(Haptics.ImpactFeedbackStyle.Medium), 200);
+  setTimeout(() => hapticNotification(Haptics.NotificationFeedbackType.Success), 350);
 }
 
-export function playWinSound(): void {
-  // Will play victory sound
-}
-
-export function playTimerTickSound(): void {
-  // Will play tick sound in last 10 seconds
-}
-
+/** Cleanup — no-op for haptics (no resources to release) */
 export function cleanupSounds(): void {
-  Object.values(sounds).forEach((s) => s.unloadAsync().catch(() => {}));
+  // Reserved for future audio file cleanup
 }

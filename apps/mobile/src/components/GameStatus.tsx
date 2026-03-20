@@ -14,6 +14,10 @@ interface GameStatusProps {
   playerId: string;
   connectedPlayers?: Set<string>;
   onLeave?: () => void;
+  soundOn?: boolean;
+  onToggleSound?: () => void;
+  boardFlipped?: boolean;
+  onToggleFlip?: () => void;
 }
 
 function useTimeRemaining(
@@ -65,6 +69,10 @@ export function GameStatus({
   playerId,
   connectedPlayers,
   onLeave,
+  soundOn,
+  onToggleSound,
+  boardFlipped,
+  onToggleFlip,
 }: GameStatusProps) {
   const currentPlayerId = state.playerOrder[state.currentTurn];
   const isMyTurn = currentPlayerId === playerId;
@@ -241,6 +249,29 @@ export function GameStatus({
         </View>
       </View>
 
+      {/* Sound toggle */}
+      {onToggleSound && (
+        <Pressable style={styles.iconBtn} onPress={onToggleSound}>
+          <Text style={styles.iconBtnText}>
+            {soundOn ? "\u{1F50A}" : "\u{1F507}"}
+          </Text>
+        </Pressable>
+      )}
+
+      {/* Board flip toggle */}
+      {onToggleFlip && (
+        <Pressable style={styles.iconBtn} onPress={onToggleFlip}>
+          <Text
+            style={[
+              styles.iconBtnText,
+              boardFlipped && styles.iconBtnActive,
+            ]}
+          >
+            {"\u{1F503}"}
+          </Text>
+        </Pressable>
+      )}
+
       {/* Leave button */}
       {onLeave && (
         <Pressable style={styles.leaveBtn} onPress={onLeave}>
@@ -341,6 +372,20 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
     color: colors.gold,
+  },
+  iconBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  iconBtnText: {
+    fontSize: 14,
+    opacity: 0.7,
+  },
+  iconBtnActive: {
+    opacity: 1,
   },
   leaveBtn: {
     width: 32,

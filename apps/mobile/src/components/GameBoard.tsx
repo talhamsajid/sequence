@@ -15,6 +15,7 @@ interface GameBoardProps {
   selectedCardIndex: number | null;
   playerId: string;
   onCellClick: (row: number, col: number) => void;
+  boardFlipped?: boolean;
 }
 
 const SEQUENCE_LINE_COLORS: Record<PlayerColor, { stroke: string; glow: string }> = {
@@ -28,6 +29,7 @@ export function GameBoard({
   selectedCardIndex,
   playerId,
   onCellClick,
+  boardFlipped = false,
 }: GameBoardProps) {
   const { width: screenWidth } = useWindowDimensions();
   const player = state.players[playerId];
@@ -86,6 +88,7 @@ export function GameBoard({
       style={[
         styles.container,
         { width: actualBoardWidth, height: actualBoardHeight },
+        boardFlipped && { transform: [{ rotate: "180deg" }] },
       ]}
     >
       {/* Grid */}

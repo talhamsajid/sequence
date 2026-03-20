@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import * as Haptics from "expo-haptics";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   subscribeToRoom,
   setRoom,
@@ -29,18 +29,53 @@ import {
   getValidPositions,
   getRandomValidMove,
   isOneEyedJack,
+  isTwoEyedJack,
   getMaxPlayers,
   switchPlayerTeam,
   getPlayerTeamColor,
 } from "@sequence/game-logic";
 import { getPlayerId, getPlayerName, setPlayerName } from "../../src/lib/storage";
+import {
+  playChipSound,
+  yourTurnSound,
+  removeChipSound,
+  sequenceSound,
+  winSound,
+  timerTickSound,
+  jackRemoveSound,
+  jackWildSound,
+  isSoundEnabled,
+  setSoundEnabled,
+} from "../../src/lib/sounds";
 import { GameBoard } from "../../src/components/GameBoard";
 import { PlayerHand } from "../../src/components/PlayerHand";
 import { GameStatus } from "../../src/components/GameStatus";
 import { Lobby } from "../../src/components/Lobby";
 import { WinOverlay } from "../../src/components/WinOverlay";
 import { ZoomableBoard } from "../../src/components/ZoomableBoard";
+import { Chat } from "../../src/components/Chat";
+import { JackAnimation } from "../../src/components/JackAnimation";
+import { ReconnectOverlay } from "../../src/components/ReconnectOverlay";
+import {
+  ToastContainer,
+  type ToastData,
+} from "../../src/components/PlayerToast";
 import { colors, spacing, borderRadius } from "../../src/constants/theme";
+
+// ---------------------------------------------------------------------------
+// Board flip persistence
+// ---------------------------------------------------------------------------
+
+const FLIP_STORAGE_KEY = "sequence_board_flipped";
+
+function getStoredFlipSync(): boolean {
+  // We load async in useEffect and default to false
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// Page component
+// ---------------------------------------------------------------------------
 
 export default function GamePage() {
   const { roomId } = useLocalSearchParams<{ roomId: string }>();
@@ -50,21 +85,45 @@ export default function GamePage() {
   const [playerId] = useState(() => getPlayerId());
   const [error, setError] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
+  const [soundOn, setSoundOn] = useState(() => isSoundEnabled());
+  const [boardFlipped, setBoardFlipped] = useState(false);
   const [connectedPlayers, setConnectedPlayers] = useState<Set<string>>(
     () => new Set()
   );
   const [nameInput, setNameInput] = useState("");
   const [roomChecked, setRoomChecked] = useState(false);
+  const [jackAnimation, setJackAnimation] = useState<{
+    card: string;
+    type: "one-eyed" | "two-eyed";
+  } | null>(null);
+  const [toasts, setToasts] = useState<ToastData[]>([]);
   const [isConnected, setIsConnected] = useState(true);
 
-  // Refs for change detection
+  // Track previous values for change detection
   const prevTurnRef = useRef<number | null>(null);
+  const prevSeqCountRef = useRef<number>(0);
+  const prevPhaseRef = useRef<string | null>(null);
+  const prevLastMoveRef = useRef<GameState["lastMove"]>(null);
+  const prevPlayersRef = useRef<
+    Record<string, { name: string; color: string; connected: boolean }>
+  >({});
+
+  // Refs
   const autoPlayingRef = useRef(false);
   const stateRef = useRef<GameState | null>(null);
   stateRef.current = state;
   const presenceCleanupRef = useRef<(() => void) | null>(null);
   const connectedPlayersRef = useRef(connectedPlayers);
   connectedPlayersRef.current = connectedPlayers;
+
+  // Load board flip preference from AsyncStorage
+  useEffect(() => {
+    AsyncStorage.getItem(FLIP_STORAGE_KEY)
+      .then((val) => {
+        if (val === "true") setBoardFlipped(true);
+      })
+      .catch(() => {});
+  }, []);
 
   // Subscribe to game state
   useEffect(() => {
@@ -122,20 +181,162 @@ export default function GamePage() {
     };
   }, [roomId, playerId, isInGame]);
 
-  // Haptics on turn change
+  // -----------------------------------------------------------------------
+  // Sound effects on state changes
+  // -----------------------------------------------------------------------
   useEffect(() => {
-    if (!state || state.phase !== "playing") return;
+    if (!state || state.phase === "waiting") return;
+
+    // Turn change — play your-turn sound
     if (
       prevTurnRef.current !== null &&
       prevTurnRef.current !== state.currentTurn &&
-      state.playerOrder[state.currentTurn] === playerId
+      state.playerOrder[state.currentTurn] === playerId &&
+      state.phase === "playing"
     ) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      yourTurnSound();
     }
+
+    // New sequence detected
+    const currentSeqCount = state.sequences.length;
+    if (
+      prevSeqCountRef.current > 0 &&
+      currentSeqCount > prevSeqCountRef.current
+    ) {
+      sequenceSound();
+    }
+
+    // Game finished
+    if (prevPhaseRef.current === "playing" && state.phase === "finished") {
+      winSound();
+    }
+
     prevTurnRef.current = state.currentTurn;
+    prevSeqCountRef.current = state.sequences.length;
+    prevPhaseRef.current = state.phase;
   }, [state, playerId]);
 
+  // -----------------------------------------------------------------------
+  // Jack animation detection
+  // -----------------------------------------------------------------------
+  useEffect(() => {
+    if (!state || !state.lastMove) return;
+    const prev = prevLastMoveRef.current;
+    const curr = state.lastMove;
+    if (
+      prev &&
+      prev.row === curr.row &&
+      prev.col === curr.col &&
+      prev.card === curr.card &&
+      prev.playerId === curr.playerId
+    ) {
+      prevLastMoveRef.current = curr;
+      return;
+    }
+    prevLastMoveRef.current = curr;
+
+    const { card } = curr;
+    if (isOneEyedJack(card)) {
+      setJackAnimation({ card, type: "one-eyed" });
+      jackRemoveSound();
+    } else if (isTwoEyedJack(card)) {
+      setJackAnimation({ card, type: "two-eyed" });
+      jackWildSound();
+    }
+  }, [state?.lastMove]);
+
+  // -----------------------------------------------------------------------
+  // Player join/leave/disconnect detection — toast notifications
+  // -----------------------------------------------------------------------
+  const addToast = useCallback(
+    (message: string, playerColor?: string, icon?: string) => {
+      const id = `toast_${Date.now()}_${Math.random()
+        .toString(36)
+        .slice(2, 6)}`;
+      setToasts((prev) => [
+        ...prev,
+        { id, message, playerColor, icon: icon ?? "\u2139\uFE0F" },
+      ]);
+    },
+    []
+  );
+
+  const removeToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  useEffect(() => {
+    if (!state) return;
+
+    const currentPlayers = state.players;
+    const prev = prevPlayersRef.current;
+
+    // Detect leaves
+    for (const [pid, prevPlayer] of Object.entries(prev)) {
+      if (!currentPlayers[pid]) {
+        addToast(
+          `${prevPlayer.name} left the game`,
+          prevPlayer.color,
+          "\u{1F44B}"
+        );
+      } else if (prevPlayer.connected && !currentPlayers[pid].connected) {
+        addToast(
+          `${prevPlayer.name} disconnected`,
+          prevPlayer.color,
+          "\u26A1"
+        );
+      }
+    }
+
+    // Detect joins (skip self)
+    for (const [pid, p] of Object.entries(currentPlayers)) {
+      if (!prev[pid] && pid !== playerId) {
+        addToast(
+          `${p.name} joined the game`,
+          p.color,
+          "\u{1F44B}"
+        );
+      } else if (
+        prev[pid] &&
+        !prev[pid].connected &&
+        p.connected &&
+        pid !== playerId
+      ) {
+        addToast(
+          `${p.name} reconnected`,
+          p.color,
+          "\u{1F50C}"
+        );
+      }
+    }
+
+    // Update ref
+    prevPlayersRef.current = Object.fromEntries(
+      Object.entries(currentPlayers).map(([pid, p]) => [
+        pid,
+        { name: p.name, color: p.color, connected: p.connected },
+      ])
+    );
+  }, [state?.players, playerId, addToast]);
+
+  // -----------------------------------------------------------------------
+  // Firebase connection state monitoring
+  // -----------------------------------------------------------------------
+  useEffect(() => {
+    if (!isInGame || !roomId) return;
+    const unsubscribe = subscribeToConnectionState((connected) => {
+      setIsConnected(connected);
+      if (connected) {
+        presenceCleanupRef.current?.();
+        presenceCleanupRef.current = registerPresence(roomId, playerId);
+      }
+    });
+    return unsubscribe;
+  }, [isInGame, roomId, playerId]);
+
+  // -----------------------------------------------------------------------
   // Turn timer auto-play
+  // -----------------------------------------------------------------------
   const turnStartedAt = state?.turnStartedAt ?? null;
   const turnTimeLimit = state?.turnTimeLimit ?? 60;
   const currentTurnPlayerId =
@@ -197,7 +398,9 @@ export default function GamePage() {
     return () => clearInterval(interval);
   }, [isMyTurn, turnStartedAt, turnTimeLimit, playerId, roomId]);
 
+  // -----------------------------------------------------------------------
   // Auto-play for disconnected players (host only)
+  // -----------------------------------------------------------------------
   useEffect(() => {
     if (
       !state ||
@@ -274,20 +477,29 @@ export default function GamePage() {
     return () => clearTimeout(timeout);
   }, [state, playerId, roomId, connectedPlayers]);
 
-  // Firebase connection state
+  // -----------------------------------------------------------------------
+  // Tick-tock countdown sound when <=15 seconds remain
+  // -----------------------------------------------------------------------
   useEffect(() => {
-    if (!isInGame || !roomId) return;
-    const unsubscribe = subscribeToConnectionState((connected) => {
-      setIsConnected(connected);
-      if (connected) {
-        presenceCleanupRef.current?.();
-        presenceCleanupRef.current = registerPresence(roomId, playerId);
-      }
-    });
-    return unsubscribe;
-  }, [isInGame, roomId, playerId]);
+    if (!isMyTurn || turnStartedAt === null || state?.phase !== "playing")
+      return;
 
-  // Handle cell click
+    const interval = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - turnStartedAt) / 1000);
+      const remaining = turnTimeLimit - elapsed;
+
+      if (remaining > 0 && remaining <= 15) {
+        timerTickSound(remaining % 2 === 0);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isMyTurn, turnStartedAt, turnTimeLimit, state?.phase]);
+
+  // -----------------------------------------------------------------------
+  // Handlers
+  // -----------------------------------------------------------------------
+
   const handleCellClick = useCallback(
     async (row: number, col: number) => {
       if (!state || selectedCard === null || !roomId) return;
@@ -298,10 +510,11 @@ export default function GamePage() {
       try {
         const newState = playCard(state, playerId, selectedCard, row, col);
 
+        // Play appropriate sound
         if (card && isOneEyedJack(card)) {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+          removeChipSound();
         } else {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          playChipSound();
         }
 
         await setRoom(roomId, newState);
@@ -315,7 +528,6 @@ export default function GamePage() {
     [state, selectedCard, playerId, roomId]
   );
 
-  // Start game
   const handleStart = useCallback(async () => {
     if (!state || !roomId) return;
     try {
@@ -326,7 +538,6 @@ export default function GamePage() {
     }
   }, [state, roomId]);
 
-  // Switch team
   const handleSwitchTeam = useCallback(
     async (targetTeamId: string) => {
       if (!state || state.mode !== "teams" || !state.teams || !roomId)
@@ -349,7 +560,6 @@ export default function GamePage() {
     [state, playerId, roomId]
   );
 
-  // Change chip color (solo lobby)
   const handleChangeColor = useCallback(
     async (color: PlayerColor) => {
       if (!state || state.phase !== "waiting" || !roomId) return;
@@ -369,7 +579,6 @@ export default function GamePage() {
     [state, playerId, roomId]
   );
 
-  // Play again
   const handlePlayAgain = useCallback(async () => {
     if (!state || !roomId) return;
     const started = startGame(state);
@@ -377,7 +586,6 @@ export default function GamePage() {
     setSelectedCard(null);
   }, [state, roomId]);
 
-  // Leave game
   const handleLeave = useCallback(async () => {
     presenceCleanupRef.current?.();
     presenceCleanupRef.current = null;
@@ -394,7 +602,21 @@ export default function GamePage() {
     router.replace("/");
   }, [state, playerId, roomId, router]);
 
-  // Loading state
+  const handleToggleSound = useCallback(() => {
+    const next = !soundOn;
+    setSoundOn(next);
+    setSoundEnabled(next);
+  }, [soundOn]);
+
+  const handleToggleFlip = useCallback(() => {
+    const next = !boardFlipped;
+    setBoardFlipped(next);
+    AsyncStorage.setItem(FLIP_STORAGE_KEY, String(next)).catch(() => {});
+  }, [boardFlipped]);
+
+  // -----------------------------------------------------------------------
+  // Render: Loading
+  // -----------------------------------------------------------------------
   if (!state) {
     if (roomChecked) {
       router.replace("/");
@@ -409,7 +631,9 @@ export default function GamePage() {
     );
   }
 
-  // Not in game — needs name to join
+  // -----------------------------------------------------------------------
+  // Render: Not in game (name entry)
+  // -----------------------------------------------------------------------
   if (!state.players[playerId]) {
     const notInGameTeamCount = state.teams
       ? Object.keys(state.teams).length
@@ -488,7 +712,9 @@ export default function GamePage() {
     );
   }
 
-  // Lobby
+  // -----------------------------------------------------------------------
+  // Render: Lobby
+  // -----------------------------------------------------------------------
   if (state.phase === "waiting") {
     return (
       <Lobby
@@ -503,7 +729,9 @@ export default function GamePage() {
     );
   }
 
-  // Game in progress
+  // -----------------------------------------------------------------------
+  // Render: Game in progress
+  // -----------------------------------------------------------------------
   const player = state.players[playerId];
   const hand = player?.hand ?? [];
 
@@ -523,6 +751,10 @@ export default function GamePage() {
           playerId={playerId}
           connectedPlayers={connectedPlayers}
           onLeave={handleLeave}
+          soundOn={soundOn}
+          onToggleSound={handleToggleSound}
+          boardFlipped={boardFlipped}
+          onToggleFlip={handleToggleFlip}
         />
       </View>
 
@@ -541,6 +773,7 @@ export default function GamePage() {
             selectedCardIndex={selectedCard}
             playerId={playerId}
             onCellClick={handleCellClick}
+            boardFlipped={boardFlipped}
           />
         </ZoomableBoard>
       </View>
@@ -554,15 +787,12 @@ export default function GamePage() {
         validCards={validCardIndices}
       />
 
-      {/* Reconnect overlay */}
-      {!isConnected && (
-        <View style={styles.reconnectOverlay}>
-          <View style={styles.reconnectCard}>
-            <ActivityIndicator size="small" color={colors.textWhite} />
-            <Text style={styles.reconnectText}>Reconnecting...</Text>
-          </View>
-        </View>
-      )}
+      {/* Jack card animation */}
+      <JackAnimation
+        card={jackAnimation?.card ?? null}
+        type={jackAnimation?.type ?? null}
+        onComplete={() => setJackAnimation(null)}
+      />
 
       {/* Win overlay */}
       <WinOverlay
@@ -571,9 +801,30 @@ export default function GamePage() {
         onPlayAgain={handlePlayAgain}
         onLeave={handleLeave}
       />
+
+      {/* Chat — visible during playing and finished phases */}
+      {(state.phase === "playing" || state.phase === "finished") &&
+        player && (
+          <Chat
+            roomId={roomId!}
+            playerId={playerId}
+            playerName={player.name}
+            playerColor={player.color}
+          />
+        )}
+
+      {/* Player event toasts (join/leave/disconnect) */}
+      <ToastContainer toasts={toasts} onDismiss={removeToast} />
+
+      {/* Reconnection overlay */}
+      <ReconnectOverlay isConnected={isConnected} onLeave={handleLeave} />
     </SafeAreaView>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Styles
+// ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
   loadingContainer: {
@@ -677,26 +928,5 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     overflow: "hidden",
-  },
-  reconnectOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    justifyContent: "center",
-    alignItems: "center",
-    zIndex: 50,
-  },
-  reconnectCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    backgroundColor: "rgba(17,24,39,0.9)",
-    borderRadius: borderRadius.lg,
-  },
-  reconnectText: {
-    color: colors.textWhite,
-    fontSize: 14,
-    fontWeight: "600",
   },
 });
