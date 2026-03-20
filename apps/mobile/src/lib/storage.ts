@@ -1,61 +1,52 @@
-// Platform-specific storage using React Native AsyncStorage
-// Drop-in replacement for web's localStorage-based utils
-
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { generatePlayerId } from "@sequence/game-logic";
 
-// In-memory fallback until AsyncStorage is loaded
+// In-memory cache for synchronous access after initial load
 let _playerId: string | null = null;
 let _playerName: string | null = null;
+let _initialized = false;
 
-// Lazy-load AsyncStorage to avoid import issues during SSR/testing
-async function getStorage() {
-  const { default: AsyncStorage } = await import(
-    "@react-native-async-storage/async-storage"
-  );
-  return AsyncStorage;
+/**
+ * Initialize storage by loading cached values from AsyncStorage.
+ * Call once at app startup before using sync getters.
+ */
+export async function initStorage(): Promise<void> {
+  if (_initialized) return;
+  try {
+    const [id, name] = await Promise.all([
+      AsyncStorage.getItem("sequence_player_id"),
+      AsyncStorage.getItem("sequence_player_name"),
+    ]);
+    if (id) _playerId = id;
+    if (name) _playerName = name;
+  } catch {
+    // AsyncStorage not available — continue with in-memory
+  }
+  _initialized = true;
 }
 
-export async function getPlayerId(): Promise<string> {
+/**
+ * Get or create a persistent player ID (synchronous after init).
+ */
+export function getPlayerId(): string {
   if (_playerId) return _playerId;
-  try {
-    const storage = await getStorage();
-    const id = await storage.getItem("sequence_player_id");
-    if (id) {
-      _playerId = id;
-      return id;
-    }
-  } catch {
-    // AsyncStorage not available — generate ephemeral ID
-  }
   const newId = generatePlayerId();
   _playerId = newId;
-  try {
-    const storage = await getStorage();
-    await storage.setItem("sequence_player_id", newId);
-  } catch {
-    // Silently continue with in-memory ID
-  }
+  AsyncStorage.setItem("sequence_player_id", newId).catch(() => {});
   return newId;
 }
 
-export async function getPlayerName(): Promise<string | null> {
-  if (_playerName !== null) return _playerName;
-  try {
-    const storage = await getStorage();
-    const name = await storage.getItem("sequence_player_name");
-    _playerName = name;
-    return name;
-  } catch {
-    return null;
-  }
+/**
+ * Get the stored player name (synchronous after init).
+ */
+export function getPlayerName(): string | null {
+  return _playerName;
 }
 
-export async function setPlayerName(name: string): Promise<void> {
+/**
+ * Persist the player name.
+ */
+export function setPlayerName(name: string): void {
   _playerName = name;
-  try {
-    const storage = await getStorage();
-    await storage.setItem("sequence_player_name", name);
-  } catch {
-    // Silently continue with in-memory name
-  }
+  AsyncStorage.setItem("sequence_player_name", name).catch(() => {});
 }

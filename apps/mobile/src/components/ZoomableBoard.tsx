@@ -1,4 +1,4 @@
-import React, { useRef } from "react";
+import React from "react";
 import { StyleSheet } from "react-native";
 import Animated, {
   useSharedValue,
@@ -8,7 +8,6 @@ import Animated, {
 import {
   GestureDetector,
   Gesture,
-  GestureHandlerRootView,
 } from "react-native-gesture-handler";
 
 interface ZoomableBoardProps {
@@ -31,12 +30,14 @@ export function ZoomableBoard({
 
   const pinchGesture = Gesture.Pinch()
     .onUpdate((e) => {
-      const newScale = Math.min(maxScale, Math.max(minScale, savedScale.value * e.scale));
+      const newScale = Math.min(
+        maxScale,
+        Math.max(minScale, savedScale.value * e.scale)
+      );
       scale.value = newScale;
     })
     .onEnd(() => {
       savedScale.value = scale.value;
-      // Snap back to 1x if close
       if (scale.value < 1.1) {
         scale.value = withSpring(1, { stiffness: 200, damping: 20 });
         savedScale.value = 1;
@@ -63,7 +64,6 @@ export function ZoomableBoard({
     .numberOfTaps(2)
     .onEnd(() => {
       if (scale.value > 1.05) {
-        // Zoom out
         scale.value = withSpring(1, { stiffness: 200, damping: 20 });
         savedScale.value = 1;
         translateX.value = withSpring(0);
@@ -71,7 +71,6 @@ export function ZoomableBoard({
         savedTranslateX.value = 0;
         savedTranslateY.value = 0;
       } else {
-        // Zoom in to 2x
         scale.value = withSpring(2, { stiffness: 200, damping: 20 });
         savedScale.value = 2;
       }
@@ -80,7 +79,7 @@ export function ZoomableBoard({
   const composedGesture = Gesture.Simultaneous(
     pinchGesture,
     panGesture,
-    doubleTap,
+    doubleTap
   );
 
   const animatedStyle = useAnimatedStyle(() => ({

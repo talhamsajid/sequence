@@ -10,76 +10,141 @@ import { colors, spacing, borderRadius } from "../constants/theme";
 interface PlayerHandProps {
   hand: Card[];
   selectedIndex: number | null;
-  isMyTurn: boolean;
   onSelect: (index: number) => void;
+  isMyTurn: boolean;
+  validCards: Set<number>;
 }
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+function JackBadge({ card }: { card: Card }) {
+  const oneEyed = isOneEyedJack(card);
+  return (
+    <View
+      style={[
+        styles.jackBadge,
+        { backgroundColor: oneEyed ? colors.jackRemove : colors.jackWild },
+      ]}
+    >
+      <Text style={styles.jackBadgeText}>{oneEyed ? "1J" : "2J"}</Text>
+    </View>
+  );
+}
 
 function HandCard({
   card,
   index,
   isSelected,
   isMyTurn,
+  hasValidMove,
   onSelect,
 }: {
   card: Card;
   index: number;
   isSelected: boolean;
   isMyTurn: boolean;
+  hasValidMove: boolean;
   onSelect: (index: number) => void;
 }) {
   const info = cardDisplay(card);
-  const isJack = isOneEyedJack(card) || isTwoEyedJack(card);
+  const isJack = card[0] === "J";
+  const suitColor = info.color === "red" ? "#dc2626" : "#374151";
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateY: withSpring(isSelected ? -12 : 0, { stiffness: 180, damping: 14 }) },
-      { scale: withSpring(isSelected ? 1.08 : 1, { stiffness: 180, damping: 14 }) },
+      {
+        translateY: withSpring(isSelected ? -12 : 0, {
+          stiffness: 180,
+          damping: 14,
+        }),
+      },
+      {
+        scale: withSpring(isSelected ? 1.05 : 1, {
+          stiffness: 180,
+          damping: 14,
+        }),
+      },
     ],
   }));
 
   return (
     <AnimatedPressable
       onPress={() => onSelect(index)}
-      disabled={!isMyTurn}
+      disabled={!isMyTurn || !hasValidMove}
       style={[
         styles.card,
         animatedStyle,
-        isSelected && styles.cardSelected,
-        !isMyTurn && styles.cardDisabled,
-        isJack && styles.cardJack,
+        {
+          borderColor: isSelected
+            ? isJack
+              ? "#7c3aed"
+              : colors.goldBright
+            : hasValidMove
+              ? colors.gray300
+              : colors.gray200,
+          borderWidth: isSelected ? 2 : 1,
+        },
+        !hasValidMove && styles.cardDisabled,
       ]}
     >
-      <Text
-        style={[
-          styles.cardRank,
-          { color: info.color === "red" ? "#C0392B" : colors.heading },
-        ]}
-      >
+      {/* Card content */}
+      <Text style={[styles.cardRank, { color: suitColor }]}>
         {info.rank}
       </Text>
-      <Text
-        style={[
-          styles.cardSuit,
-          { color: info.color === "red" ? "#C0392B" : colors.heading },
-        ]}
-      >
+      <Text style={[styles.cardSuit, { color: suitColor }]}>
         {info.suit}
       </Text>
-      {isJack && (
-        <Text style={styles.jackLabel}>
-          {isOneEyedJack(card) ? "REM" : "WILD"}
-        </Text>
+
+      {/* Jack badge */}
+      {isJack && hasValidMove && <JackBadge card={card} />}
+
+      {/* Jack strip */}
+      {isJack && hasValidMove && (
+        <View
+          style={[
+            styles.jackStrip,
+            {
+              backgroundColor: isOneEyedJack(card)
+                ? "rgba(220,38,38,0.9)"
+                : "rgba(124,58,237,0.9)",
+            },
+          ]}
+        >
+          <Text style={styles.jackStripText}>
+            {isOneEyedJack(card) ? "REMOVE" : "WILD"}
+          </Text>
+        </View>
+      )}
+
+      {/* Selected glow overlay */}
+      {isSelected && (
+        <View
+          style={[
+            styles.selectedOverlay,
+            {
+              backgroundColor: isJack
+                ? "rgba(139,92,246,0.10)"
+                : "rgba(251,191,36,0.12)",
+            },
+          ]}
+        />
       )}
     </AnimatedPressable>
   );
 }
 
-export function PlayerHand({ hand, selectedIndex, isMyTurn, onSelect }: PlayerHandProps) {
+export function PlayerHand({
+  hand,
+  selectedIndex,
+  onSelect,
+  isMyTurn,
+  validCards,
+}: PlayerHandProps) {
   return (
     <View style={[styles.container, isMyTurn && styles.containerActive]}>
-      {isMyTurn && <Text style={styles.turnLabel}>Your turn</Text>}
+      {isMyTurn && (
+        <Text style={styles.turnLabel}>Your turn -- pick a card</Text>
+      )}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -92,6 +157,7 @@ export function PlayerHand({ hand, selectedIndex, isMyTurn, onSelect }: PlayerHa
             index={i}
             isSelected={selectedIndex === i}
             isMyTurn={isMyTurn}
+            hasValidMove={validCards.has(i)}
             onSelect={onSelect}
           />
         ))}
@@ -102,72 +168,89 @@ export function PlayerHand({ hand, selectedIndex, isMyTurn, onSelect }: PlayerHa
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: colors.board,
+    backgroundColor: "rgba(255,255,255,0.10)",
     borderTopWidth: 1,
-    borderTopColor: "rgba(201,148,58,0.15)",
+    borderTopColor: "rgba(255,255,255,0.10)",
     paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
+    paddingBottom: spacing.md + 4,
   },
   containerActive: {
-    borderTopColor: colors.gold,
-    borderTopWidth: 2,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    borderTopColor: "rgba(52,211,153,0.5)", // emerald-400/50
   },
   turnLabel: {
-    color: colors.gold,
-    fontSize: 11,
+    color: colors.emerald400,
+    fontSize: 10,
     fontWeight: "700",
     textAlign: "center",
-    marginBottom: spacing.xs,
+    marginBottom: 4,
     textTransform: "uppercase",
-    letterSpacing: 1.5,
+    letterSpacing: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.md,
-    gap: spacing.sm,
+    paddingHorizontal: 56,
+    gap: 6,
     alignItems: "flex-end",
   },
   card: {
-    width: 56,
-    height: 80,
-    backgroundColor: colors.surface,
+    width: 44,
+    height: 62,
+    backgroundColor: colors.textWhite,
     borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: "rgba(201,148,58,0.2)",
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
     elevation: 3,
   },
-  cardSelected: {
-    borderColor: colors.goldBright,
-    borderWidth: 2,
-    backgroundColor: "rgba(201,148,58,0.1)",
-    shadowColor: colors.gold,
-    shadowOpacity: 0.5,
-  },
   cardDisabled: {
-    opacity: 0.5,
-  },
-  cardJack: {
-    borderColor: "rgba(201,148,58,0.4)",
+    opacity: 0.4,
   },
   cardRank: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: "800",
   },
   cardSuit: {
-    fontSize: 16,
+    fontSize: 14,
     marginTop: -2,
   },
-  jackLabel: {
+  jackBadge: {
     position: "absolute",
-    bottom: 3,
+    top: 3,
+    right: 3,
+    borderRadius: 2,
+    paddingHorizontal: 3,
+    paddingVertical: 1,
+    zIndex: 10,
+  },
+  jackBadgeText: {
     fontSize: 7,
-    fontWeight: "700",
-    color: colors.gold,
-    letterSpacing: 0.5,
+    fontWeight: "900",
+    color: colors.textWhite,
+    letterSpacing: 0.3,
+  },
+  jackStrip: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 10,
+  },
+  jackStripText: {
+    color: colors.textWhite,
+    fontSize: 7,
+    fontWeight: "900",
+    letterSpacing: 1.5,
+  },
+  selectedOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: borderRadius.md,
+    zIndex: 5,
   },
 });

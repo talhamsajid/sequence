@@ -15,7 +15,4 @@ config.resolver.nodeModulesPaths = [
   path.resolve(monorepoRoot, "node_modules"),
 ];
 
-// Ensure Metro resolves the workspace package correctly
-config.resolver.disableHierarchicalLookup = true;
-
 module.exports = config;

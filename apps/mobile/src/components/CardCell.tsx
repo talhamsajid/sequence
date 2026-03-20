@@ -1,5 +1,5 @@
 import React, { memo } from "react";
-import { Pressable, View, Text, StyleSheet, Image } from "react-native";
+import { Pressable, View, Text, StyleSheet } from "react-native";
 import type { BoardCell, PlayerColor } from "@sequence/game-logic";
 import { cardDisplay } from "@sequence/game-logic";
 import { Chip } from "./Chip";
@@ -9,94 +9,121 @@ interface CardCellProps {
   cell: BoardCell;
   chip: PlayerColor | null;
   size: number;
-  isValid: boolean;
-  isSelected: boolean;
+  isHighlighted: boolean;
   isLastMove: boolean;
   isInSequence: boolean;
-  isNew: boolean;
-  onPress: () => void;
+  sequenceColor: PlayerColor | null;
+  onClick: () => void;
+  disabled: boolean;
+}
+
+function FreeCell({ size }: { size: number }) {
+  return (
+    <View
+      style={[
+        styles.cell,
+        styles.freeCell,
+        { width: size, height: size * 1.45 },
+      ]}
+    >
+      <View style={styles.freeInner}>
+        <Text style={styles.freeText}>FREE</Text>
+      </View>
+      <Text style={styles.freeStar}>*</Text>
+    </View>
+  );
 }
 
 function CardCellInner({
   cell,
   chip,
   size,
-  isValid,
-  isSelected,
+  isHighlighted,
   isLastMove,
   isInSequence,
-  isNew,
-  onPress,
+  sequenceColor,
+  onClick,
+  disabled,
 }: CardCellProps) {
-  const isFree = cell === "FREE";
+  if (cell === "FREE") {
+    return <FreeCell size={size} />;
+  }
 
-  // Render mini card display (rank + suit symbol)
-  const cardInfo = !isFree ? cardDisplay(cell) : null;
+  const info = cardDisplay(cell);
+  const cardHeight = size * 1.45; // match 167:243 ratio
+  const suitColor = info.color === "red" ? "#dc2626" : "#374151";
 
   return (
     <Pressable
-      onPress={onPress}
-      disabled={!isValid}
+      onPress={onClick}
+      disabled={disabled}
       style={[
         styles.cell,
         {
           width: size,
-          height: size,
+          height: cardHeight,
+          backgroundColor: colors.cardCellBg,
+          borderColor: isHighlighted
+            ? "transparent"
+            : isLastMove
+              ? "rgba(251,191,36,0.8)"
+              : colors.cardCellBorder,
         },
-        isFree && styles.freeCell,
-        isValid && styles.validCell,
-        isSelected && styles.selectedCell,
-        isLastMove && styles.lastMoveCell,
+        isHighlighted && styles.highlightedCell,
+        !isHighlighted && !chip && disabled && styles.dimCell,
       ]}
     >
-      {/* Card content */}
-      {isFree ? (
-        <Text style={styles.freeText}>FREE</Text>
-      ) : cardInfo ? (
-        <View style={styles.cardContent}>
-          <Text
-            style={[
-              styles.rank,
-              { color: cardInfo.color === "red" ? "#C0392B" : "#C8B89A", fontSize: size * 0.3 },
-            ]}
-          >
-            {cardInfo.rank}
-          </Text>
-          <Text
-            style={[
-              styles.suit,
-              { color: cardInfo.color === "red" ? "#C0392B" : "#C8B89A", fontSize: size * 0.22 },
-            ]}
-          >
-            {cardInfo.suit}
-          </Text>
-        </View>
-      ) : null}
+      {/* Rank + suit */}
+      <View style={styles.cardContent}>
+        <Text style={[styles.rank, { color: suitColor, fontSize: size * 0.32 }]}>
+          {info.rank}
+        </Text>
+        <Text style={[styles.suit, { color: suitColor, fontSize: size * 0.24 }]}>
+          {info.suit}
+        </Text>
+      </View>
 
-      {/* Chip overlay */}
+      {/* Highlight overlay */}
+      {isHighlighted && <View style={styles.highlightOverlay} />}
+
+      {/* Last move indicator */}
+      {isLastMove && !isHighlighted && (
+        <View style={styles.lastMoveInset} />
+      )}
+
+      {/* Sequence color overlay */}
+      {isInSequence && sequenceColor && (
+        <View
+          style={[
+            styles.sequenceOverlay,
+            {
+              backgroundColor:
+                sequenceColor === "red"
+                  ? colors.seqRedBg
+                  : sequenceColor === "blue"
+                    ? colors.seqBlueBg
+                    : colors.seqGreenBg,
+              borderColor:
+                sequenceColor === "red"
+                  ? colors.seqRedBorder
+                  : sequenceColor === "blue"
+                    ? colors.seqBlueBorder
+                    : colors.seqGreenBorder,
+            },
+          ]}
+        />
+      )}
+
+      {/* Poker chip */}
       {chip && (
         <View style={styles.chipOverlay}>
           <Chip
             color={chip}
             size={size * 0.6}
-            isNew={isNew}
+            isNew={isLastMove && chip !== null}
             isInSequence={isInSequence}
           />
         </View>
-      )}
-
-      {/* Valid position indicator */}
-      {isValid && !chip && (
-        <View
-          style={[
-            styles.validDot,
-            {
-              width: size * 0.2,
-              height: size * 0.2,
-              borderRadius: size * 0.1,
-            },
-          ]}
-        />
       )}
     </Pressable>
   );
@@ -107,54 +134,84 @@ export const CardCell = memo(CardCellInner);
 const styles = StyleSheet.create({
   cell: {
     borderWidth: 0.5,
-    borderColor: "rgba(201,148,58,0.15)",
-    backgroundColor: colors.cardFelt,
+    borderRadius: 2,
+    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
-    overflow: "hidden",
   },
   freeCell: {
-    backgroundColor: "rgba(139,105,20,0.3)",
+    borderColor: "rgba(202,138,4,0.6)", // yellow-600/60
+    alignItems: "center",
+    justifyContent: "center",
   },
-  validCell: {
-    borderColor: colors.gold,
-    borderWidth: 1,
-    backgroundColor: "rgba(201,148,58,0.08)",
+  freeInner: {
+    position: "absolute",
+    top: "12%",
+    left: "12%",
+    right: "12%",
+    bottom: "12%",
+    borderRadius: 2,
+    borderWidth: 0.5,
+    borderColor: "rgba(253,224,71,0.4)", // yellow-300/40
+    alignItems: "center",
+    justifyContent: "center",
   },
-  selectedCell: {
-    borderColor: colors.goldBright,
-    borderWidth: 1.5,
-    backgroundColor: "rgba(201,148,58,0.15)",
+  freeText: {
+    fontSize: 7,
+    fontWeight: "800",
+    letterSpacing: 1,
+    color: "#fef9c3", // yellow-100
   },
-  lastMoveCell: {
-    borderColor: colors.goldBright,
-    borderWidth: 1,
+  freeStar: {
+    position: "absolute",
+    top: 2,
+    left: 3,
+    fontSize: 5,
+    color: "rgba(253,224,71,0.7)",
   },
   cardContent: {
     alignItems: "center",
     justifyContent: "center",
   },
   rank: {
-    fontWeight: "700",
+    fontWeight: "800",
     lineHeight: 18,
   },
   suit: {
     lineHeight: 14,
     marginTop: -2,
   },
-  freeText: {
-    color: colors.freeGold,
-    fontSize: 7,
-    fontWeight: "800",
-    letterSpacing: 0.5,
+  highlightedCell: {
+    borderWidth: 2,
+    borderColor: colors.goldBright,
+    shadowColor: colors.goldBright,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  dimCell: {
+    opacity: 0.9,
+  },
+  highlightOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(251,191,36,0.15)",
+    borderRadius: 2,
+  },
+  lastMoveInset: {
+    ...StyleSheet.absoluteFillObject,
+    borderWidth: 1,
+    borderColor: "rgba(251,191,36,0.5)",
+    borderRadius: 2,
+  },
+  sequenceOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    borderWidth: 1.5,
+    borderRadius: 2,
   },
   chipOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
-  },
-  validDot: {
-    position: "absolute",
-    backgroundColor: "rgba(201,148,58,0.4)",
   },
 });

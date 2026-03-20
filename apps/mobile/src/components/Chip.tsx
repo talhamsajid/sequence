@@ -1,17 +1,14 @@
 import React from "react";
 import { View, StyleSheet } from "react-native";
 import Animated, {
-  FadeIn,
   BounceIn,
-  ZoomIn,
   useAnimatedStyle,
   withRepeat,
   withSequence,
   withTiming,
-  withDelay,
 } from "react-native-reanimated";
 import type { PlayerColor } from "@sequence/game-logic";
-import { chipColorMap, colors } from "../constants/theme";
+import { chipColorMap, chipInnerColorMap, chipLightColorMap } from "../constants/theme";
 
 interface ChipProps {
   color: PlayerColor;
@@ -21,26 +18,30 @@ interface ChipProps {
 }
 
 export function Chip({ color, size, isNew = false, isInSequence = false }: ChipProps) {
-  const chipColor = chipColorMap[color];
+  const outerColor = chipColorMap[color] ?? "#dc2626";
+  const innerColor = chipInnerColorMap[color] ?? "#ef4444";
+  const highlightColor = chipLightColorMap[color] ?? "#fca5a5";
   const innerSize = size * 0.7;
-  const dotSize = size * 0.25;
 
-  // Drop + bounce animation for newly placed chips
-  const entering = isNew
-    ? BounceIn.duration(400).damping(12)
-    : undefined;
+  const entering = isNew ? BounceIn.duration(400).damping(12) : undefined;
 
-  // Pulsing glow for sequence chips
+  // Sequence ring glow
+  const sequenceRingColors: Record<string, string> = {
+    red: "rgba(254,202,202,0.7)", // red-200
+    blue: "rgba(191,219,254,0.7)", // blue-200
+    green: "rgba(167,243,208,0.7)", // emerald-200
+  };
+
   const glowStyle = useAnimatedStyle(() => {
     if (!isInSequence) return { opacity: 0 };
     return {
       opacity: withRepeat(
         withSequence(
           withTiming(0.8, { duration: 800 }),
-          withTiming(0.3, { duration: 800 }),
+          withTiming(0.3, { duration: 800 })
         ),
         -1,
-        true,
+        true
       ),
     };
   });
@@ -54,36 +55,41 @@ export function Chip({ color, size, isNew = false, isInSequence = false }: ChipP
           width: size,
           height: size,
           borderRadius: size / 2,
-          backgroundColor: chipColor,
-          borderWidth: isInSequence ? 2 : 1,
-          borderColor: isInSequence ? colors.goldBright : "rgba(255,255,255,0.15)",
+          backgroundColor: outerColor,
+        },
+        isInSequence && {
+          borderWidth: 2,
+          borderColor: sequenceRingColors[color] ?? "rgba(167,243,208,0.7)",
         },
       ]}
     >
       {/* Inner ring */}
       <View
         style={[
-          styles.inner,
+          styles.innerRing,
           {
             width: innerSize,
             height: innerSize,
             borderRadius: innerSize / 2,
-            borderColor: "rgba(255,255,255,0.2)",
+            backgroundColor: innerColor,
           },
         ]}
-      />
-      {/* Center dot */}
-      <View
-        style={[
-          styles.dot,
-          {
-            width: dotSize,
-            height: dotSize,
-            borderRadius: dotSize / 2,
-            backgroundColor: "rgba(255,255,255,0.25)",
-          },
-        ]}
-      />
+      >
+        {/* Radial highlight simulation */}
+        <View
+          style={[
+            styles.highlight,
+            {
+              width: innerSize * 0.55,
+              height: innerSize * 0.35,
+              borderRadius: innerSize * 0.2,
+              backgroundColor: highlightColor,
+              top: innerSize * 0.08,
+            },
+          ]}
+        />
+      </View>
+
       {/* Sequence glow ring */}
       {isInSequence && (
         <Animated.View
@@ -93,7 +99,7 @@ export function Chip({ color, size, isNew = false, isInSequence = false }: ChipP
               width: size + 6,
               height: size + 6,
               borderRadius: (size + 6) / 2,
-              borderColor: colors.goldBright,
+              borderColor: sequenceRingColors[color] ?? "rgba(167,243,208,0.7)",
             },
             glowStyle,
           ]}
@@ -109,16 +115,22 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.4,
-    shadowRadius: 3,
+    shadowOpacity: 0.5,
+    shadowRadius: 4,
     elevation: 4,
   },
-  inner: {
+  innerRing: {
     position: "absolute",
-    borderWidth: 1,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
   },
-  dot: {
+  highlight: {
     position: "absolute",
+    opacity: 0.5,
+    alignSelf: "center",
   },
   glow: {
     position: "absolute",
