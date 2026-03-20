@@ -5,6 +5,7 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated";
 import { type Card, cardDisplay, isOneEyedJack, isTwoEyedJack } from "@sequence/game-logic";
+import { getCardSvg } from "../constants/cards";
 import { colors, spacing, borderRadius } from "../constants/theme";
 
 interface PlayerHandProps {
@@ -46,9 +47,8 @@ function HandCard({
   hasValidMove: boolean;
   onSelect: (index: number) => void;
 }) {
-  const info = cardDisplay(card);
   const isJack = card[0] === "J";
-  const suitColor = info.color === "red" ? "#dc2626" : "#374151";
+  const CardSvg = getCardSvg(card);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
@@ -87,13 +87,12 @@ function HandCard({
         !hasValidMove && styles.cardDisabled,
       ]}
     >
-      {/* Card content */}
-      <Text style={[styles.cardRank, { color: suitColor }]}>
-        {info.rank}
-      </Text>
-      <Text style={[styles.cardSuit, { color: suitColor }]}>
-        {info.suit}
-      </Text>
+      {/* SVG card image */}
+      {CardSvg && (
+        <View style={StyleSheet.absoluteFill}>
+          <CardSvg width={44} height={62} />
+        </View>
+      )}
 
       {/* Jack badge */}
       {isJack && hasValidMove && <JackBadge card={card} />}

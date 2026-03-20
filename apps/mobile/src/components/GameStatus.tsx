@@ -219,8 +219,7 @@ export function GameStatus({
                 strokeLinecap="round"
                 strokeDasharray={`${circumference}`}
                 strokeDashoffset={`${circumference * (1 - fraction)}`}
-                rotation={-90}
-                origin="14,14"
+                transform="rotate(-90 14 14)"
               />
             </Svg>
             <Text style={[styles.timerText, { color: timerTextColor }]}>

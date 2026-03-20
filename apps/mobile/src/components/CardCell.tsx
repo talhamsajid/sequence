@@ -3,6 +3,7 @@ import { Pressable, View, Text, StyleSheet } from "react-native";
 import type { BoardCell, PlayerColor } from "@sequence/game-logic";
 import { cardDisplay } from "@sequence/game-logic";
 import { Chip } from "./Chip";
+import { getCardSvg } from "../constants/cards";
 import { colors, borderRadius } from "../constants/theme";
 
 interface CardCellProps {
@@ -49,9 +50,8 @@ function CardCellInner({
     return <FreeCell size={size} />;
   }
 
-  const info = cardDisplay(cell);
+  const CardSvg = getCardSvg(cell);
   const cardHeight = size * 1.45; // match 167:243 ratio
-  const suitColor = info.color === "red" ? "#dc2626" : "#374151";
 
   return (
     <Pressable
@@ -73,15 +73,12 @@ function CardCellInner({
         !isHighlighted && !chip && disabled && styles.dimCell,
       ]}
     >
-      {/* Rank + suit */}
-      <View style={styles.cardContent}>
-        <Text style={[styles.rank, { color: suitColor, fontSize: size * 0.32 }]}>
-          {info.rank}
-        </Text>
-        <Text style={[styles.suit, { color: suitColor, fontSize: size * 0.24 }]}>
-          {info.suit}
-        </Text>
-      </View>
+      {/* SVG card image */}
+      {CardSvg && (
+        <View style={StyleSheet.absoluteFill}>
+          <CardSvg width={size} height={cardHeight} />
+        </View>
+      )}
 
       {/* Highlight overlay */}
       {isHighlighted && <View style={styles.highlightOverlay} />}
