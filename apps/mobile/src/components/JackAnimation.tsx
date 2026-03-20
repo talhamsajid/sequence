@@ -288,13 +288,7 @@ export function JackAnimation({ card, type, onComplete }: JackAnimationProps) {
     glowPulse,
   ]);
 
-  if (phase === "idle" || !card || !type) return null;
-
-  const isRemove = type === "one-eyed";
-  const label = isRemove ? "REMOVE!" : "WILD!";
-  const theme = isRemove ? THEMES.remove : THEMES.wild;
-  const CardSvg = getCardSvg(card);
-
+  // ALL hooks must be called unconditionally (Rules of Hooks)
   const backdropStyle = useAnimatedStyle(() => ({
     opacity: backdropOpacity.value,
   }));
@@ -323,6 +317,13 @@ export function JackAnimation({ card, type, onComplete }: JackAnimationProps) {
     transform: [{ scale: glowPulse.value }],
   }));
 
+  // Early return AFTER all hooks
+  if (phase === "idle" || !card || !type) return null;
+
+  const isRemove = type === "one-eyed";
+  const label = isRemove ? "REMOVE!" : "WILD!";
+  const theme = isRemove ? THEMES.remove : THEMES.wild;
+  const CardSvg = getCardSvg(card);
   const isParticleActive = phase === "hold" || phase === "exit";
 
   return (
