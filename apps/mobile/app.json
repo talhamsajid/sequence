@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "Sequence",
+    "slug": "sequence-game",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "scheme": "sequence",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0D0B0E"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.technicodes.sequence"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0D0B0E",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "package": "com.technicodes.sequence"
+    },
+    "plugins": [
+      "expo-router"
+    ]
+  }
+}
