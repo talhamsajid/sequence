@@ -602,6 +602,23 @@ export default function GamePage() {
   }, [boardFlipped]);
 
   // -----------------------------------------------------------------------
+  // Derived values — ALL hooks must be above early returns (Rules of Hooks)
+  // -----------------------------------------------------------------------
+  const player = state?.players[playerId];
+  const hand = player?.hand ?? [];
+
+  const validCardIndices = useMemo(() => {
+    if (!state) return new Set<number>();
+    const indices = new Set<number>();
+    hand.forEach((card, i) => {
+      if (getValidPositions(state, card).length > 0) {
+        indices.add(i);
+      }
+    });
+    return indices;
+  }, [state?.chips, state?.sequences, hand, state?.currentTurn]);
+
+  // -----------------------------------------------------------------------
   // Render: Loading
   // -----------------------------------------------------------------------
   if (!state) {
@@ -719,18 +736,6 @@ export default function GamePage() {
   // -----------------------------------------------------------------------
   // Render: Game in progress
   // -----------------------------------------------------------------------
-  const player = state.players[playerId];
-  const hand = player?.hand ?? [];
-
-  const validCardIndices = useMemo(() => {
-    const indices = new Set<number>();
-    hand.forEach((card, i) => {
-      if (getValidPositions(state, card).length > 0) {
-        indices.add(i);
-      }
-    });
-    return indices;
-  }, [state.chips, state.sequences, hand, state.currentTurn]);
 
   return (
     <SafeAreaView style={styles.gameContainer} edges={["top"]}>
